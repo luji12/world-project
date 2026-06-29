@@ -1,0 +1,205 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #f7f3eb;
+  font-family: 'Noto Serif CJK SC', 'Songti SC', 'STSong', 'Source Han Serif SC', serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  color: #2e2b26;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  touch-action: manipulation;
+}
+
+button:not(:disabled),
+[role="button"]:not(:disabled),
+a {
+  cursor: pointer;
+}
+
+select {
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid rgba(174, 73, 55, 0.55);
+  outline-offset: 2px;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 60;
+  transform: translateY(-150%);
+  border-radius: 0.5rem;
+  background: #ad4b3a;
+  color: #fffdf8;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: transform 160ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #f0eadf; }
+::-webkit-scrollbar-thumb { background: #c8bcab; border-radius: 3px; }
+
+/* ── Atelier system ─────────────────────────────────────────────── */
+.atelier-app {
+  --ink: #2f2b25;
+  --muted: #756e64;
+  --quiet: #9c9388;
+  --line: rgba(112, 96, 77, 0.18);
+  --line-strong: rgba(112, 96, 77, 0.3);
+  --surface: #fffdf8;
+  --surface-raised: #faf7f0;
+  --paper: #f7f3eb;
+  --paper-ink: #2f2a21;
+  --brass: #ad4b3a;
+  --brass-deep: #8f382b;
+  --danger: #b24c43;
+  background: #f7f3eb;
+  color: var(--ink);
+}
+
+.atelier-app .font-serif,
+.atelier-title,
+.atelier-heading {
+  font-family: 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', serif;
+}
+
+.atelier-app .bg-slate-950,
+.atelier-app .bg-abyss-950,
+.atelier-app .bg-slate-900,
+.atelier-app .bg-slate-800,
+.atelier-app .bg-slate-700 { background-color: #fffdf8 !important; }
+.atelier-app .text-slate-100 { color: var(--ink) !important; }
+.atelier-app .text-slate-200 { color: #443f37 !important; }
+.atelier-app .text-slate-300 { color: #5c554c !important; }
+.atelier-app .text-slate-400 { color: var(--muted) !important; }
+.atelier-app .text-slate-500,
+.atelier-app .text-slate-600 { color: var(--quiet) !important; }
+.atelier-app .border-white\/10,
+.atelier-app .border-white\/5,
+.atelier-app .border-white\/\[0\.05\],
+.atelier-app .border-white\/\[0\.06\],
+.atelier-app .border-white\/\[0\.08\] { border-color: var(--line) !important; }
+.atelier-app .bg-white\/\[0\.02\],
+.atelier-app .bg-white\/\[0\.04\],
+.atelier-app .bg-white\/\[0\.05\] { background-color: #fffdf8 !important; }
+
+/* Workspace components were originally authored against a dark palette.
+   Keep their semantic component classes, but map the old values through the
+   paper edition tokens so every screen shares the reader's visual language. */
+.atelier-app [class*="bg-[#10110d]"],
+.atelier-app [class*="bg-[#14150f]"],
+.atelier-app [class*="bg-[#161711]"],
+.atelier-app [class*="bg-[#1b1b14]"],
+.atelier-app [class*="bg-[#1d1d16]"],
+.atelier-app [class*="bg-[#212119]"],
+.atelier-app [class*="bg-[#24231b]"] { background-color: #fffdf8 !important; }
+.atelier-app [class*="text-[#eee7d8]"],
+.atelier-app [class*="text-[#ede4d5]"],
+.atelier-app [class*="text-[#f2eadb]"],
+.atelier-app [class*="text-[#e7decf]"],
+.atelier-app [class*="text-[#e6ddcd]"],
+.atelier-app [class*="text-[#e5dccd]"],
+.atelier-app [class*="text-[#e3dbcb]"],
+.atelier-app [class*="text-[#e8dfd0]"],
+.atelier-app [class*="text-[#d7cfbf]"],
+.atelier-app [class*="text-[#ddd4c4]"],
+.atelier-app [class*="text-[#c9bea9]"],
+.atelier-app [class*="text-[#c5bcab]"],
+.atelier-app [class*="text-[#bdb3a1]"],
+.atelier-app [class*="text-[#b8af9e]"] { color: #3d3831 !important; }
+.atelier-app [class*="text-[#a99f8c]"],
+.atelier-app [class*="text-[#9f9686]"],
+.atelier-app [class*="text-[#827a6b]"],
+.atelier-app [class*="text-[#756e60]"] { color: #766e64 !important; }
+.atelier-app [class*="text-[#d3ad65]"],
+.atelier-app [class*="text-[#e7c37f]"],
+.atelier-app [class*="text-[#f0dca9]"],
+.atelier-app [class*="text-[#ecd59d]"] { color: #a94334 !important; }
+.atelier-app [class*="bg-[#d3ad65]"],
+.atelier-app [class*="bg-[#fbf7ee]"] { background-color: #f8f2e8 !important; }
+.atelier-app [class*="border-[#d3ad65]"],
+.atelier-app [class*="border-[#e0bf7c]"] { border-color: rgba(174, 73, 55, 0.42) !important; }
+
+.atelier-page {
+  width: min(100%, 1180px);
+  margin-inline: auto;
+  animation: fadeInUp 360ms cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.atelier-panel {
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  box-shadow: none;
+}
+
+.atelier-rule { border-color: var(--line) !important; }
+
+.atelier-tab {
+  min-height: 2.5rem;
+  border: 1px solid transparent;
+  border-radius: .375rem;
+  padding: 0 .9rem;
+  color: var(--muted);
+  font-size: .8125rem;
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.atelier-tab:hover { background: #f5eee4; color: var(--ink); }
+.atelier-tab[data-active="true"] { border-color: rgba(174, 73, 55, .42); background: #f5e8e2; color: #a94334; }
+
+.atelier-field-label {
+  display: block;
+  margin-bottom: .45rem;
+  color: #625a50;
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+}
+
+.atelier-app input[type="checkbox"] { accent-color: var(--brass); }
+
+@media (max-width: 640px) {
+  .atelier-page { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}

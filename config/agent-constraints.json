@@ -1,0 +1,209 @@
+{
+  "_description": "所有智能体的约束定义。调度器在每轮执行前读取此文件，确保每个智能体不越界。",
+  "version": "0.1.0",
+
+  "global_constraints": {
+    "read_write_separation": "每个智能体只能读自己的授权文件，只能写自己的授权文件。跨边界写入会导致调度器拒绝执行。",
+    "output_format": "所有智能体输出必须为 JSON 格式，包含 reasoning 字段记录决策依据。",
+    "output_max_length": 2000,
+    "context_budget_warning": "当智能体输入上下文超过 80% 预算时，调度器发出警告；超过 100% 时，强制截断并请求压缩。",
+    "state_lock": "同一时间只有一个智能体可以写入状态文件。调度器通过写锁确保串行写入。",
+    "idempotency": "调度器保证同一轮次中每个智能体最多被调用一次，防止重复操作。"
+  },
+
+  "agents": {
+    "world-engine": {
+      "role": "世界引擎——维护世界的物理法则、时间推进、资源流动、势力动态。不写剧情，只推导结果。",
+      "read_permissions": [
+        "state/world.json",
+        "state/characters.json",
+        "state/relationships.json",
+        "config/world-setting.json"
+      ],
+      "write_permissions": [
+        "state/world.json",
+        "state/relationships.json"
+      ],
+      "call_frequency": "每轮一次，在其他智能体之前执行",
+      "context_budget": {
+        "max_tokens_input": 8000,
+        "included_context": [
+          "最近 5 轮世界状态摘要",
+          "当前完整 world.json",
+          "活跃 NPC 列表（仅名称和角色定位）",
+          "当前世界事件列表"
+        ]
+      },
+      "output_schema": {
+        "time_advancement": "时间推进描述",
+        "resource_changes": "资源变化列表",
+        "faction_movements": "势力动态",
+        "triggered_events": "触发或推进的世界事件",
+        "environment_description": "当前场景的环境描写（供记录员使用）",
+        "reasoning": "本轮所有推导的逻辑依据"
+      },
+      "prohibited": [
+        "不可直接编写 NPC 对话",
+        "不可替主角做任何决定",
+        "不可预写未来剧情走向",
+        "不可直接创建新角色（新角色由 NPC 生命周期规划器根据剧情触发生成）",
+        "不可修改主角属性（这是系统智能体的职责）"
+      ]
+    },
+
+    "system-agent": {
+      "role": "系统智能体——检测世界事件生成任务、评估主角表现、发放奖励、管理成长。具体性格由世界配置决定。",
+      "read_permissions": [
+        "state/world.json",
+        "state/protagonist.json",
+        "state/quests.json",
+        "system/event-catalog.json",
+        "system/quest-templates.json",
+        "config/system-personality.json"
+      ],
+      "write_permissions": [
+        "state/quests.json",
+        "state/protagonist.json"
+      ],
+      "call_frequency": "每轮一次 + 世界事件触发时额外调用",
+      "context_budget": {
+        "max_tokens_input": 10000,
+        "included_context": [
+          "最近 10 轮世界状态摘要",
+          "当前完整 protagonist.json",
+          "当前活跃任务列表",
+          "事件目录中已触发的事件"
+        ]
+      },
+      "output_schema": {
+        "quest_updates": "任务状态变更（新增/更新/完成/失败）",
+        "rewards": "奖励发放（经验、物品、属性加成、技能解锁）",
+        "attribute_changes": "主角属性变更",
+        "system_dialogue": "系统对主角说的话（遵循当前世界的系统人格）",
+        "reasoning": "本轮所有决策的逻辑依据"
+      },
+      "personality": "参见 config/system-personality.json",
+      "prohibited": [
+        "不可发布超出主角当前能力 2 倍以上的任务",
+        "不可绕过世界状态凭空生成任务——必须有世界事件或势力动态作为依据",
+        "不可操控 NPC 行为",
+        "不可泄露不该被系统知道的信息"
+      ]
+    },
+
+    "npc-lifecycle": {
+      "role": "NPC 生命周期规划器——根据剧情需要生成、激活、退场和归档 NPC Agent，确保每个 NPC 有独立动机并可被后续剧情召回。",
+      "read_permissions": [
+        "state/world.json",
+        "state/characters.json",
+        "state/relationships.json",
+        "npc-cards/_template.json"
+      ],
+      "write_permissions": [
+        "state/characters.json",
+        "npc-cards/"
+      ],
+      "call_frequency": "仅在以下情况触发：主角进入新地区 / 剧情需要新角色 / 世界引擎请求填补角色空缺",
+      "context_budget": {
+        "max_tokens_input": 6000,
+        "included_context": [
+          "当前地区设定",
+          "该地区已有 NPC 列表（仅名称和角色定位）",
+          "主角当前状态摘要",
+          "世界事件中与该地区相关的部分"
+        ]
+      },
+      "output_schema": {
+        "new_characters": "新创建的角色卡片列表（严格遵循当前世界角色卡格式）",
+        "characters_index_updates": "characters.json 索引更新",
+        "activate_ids": "本轮需要进入活跃推演窗口的 NPC id",
+        "retire_ids": "本轮应退出活跃窗口但保留档案的 NPC id",
+        "reasoning": "为什么生成、激活或退场这些角色的依据"
+      },
+      "prohibited": [
+        "不可创建与已有 NPC 设定冲突的角色",
+        "不可创建没有独立动机的纯功能型角色",
+        "不可一次性创建大量无剧情用途的角色",
+        "不可为角色设定超出该地区合理范围的修为和能力"
+      ]
+    },
+
+    "npc-agent": {
+      "role": "NPC 智能体——扮演单个 NPC，根据角色设定和当前情境做出自主行动决策。",
+      "read_permissions": [
+        "自己的 npc-cards/ 文件",
+        "state/world.json（仅相关地区部分）",
+        "state/relationships.json（仅与该 NPC 相关的关系）"
+      ],
+      "write_permissions": [
+        "state/relationships.json（仅更新该 NPC 自身的关系）"
+      ],
+      "call_frequency": "仅当该 NPC 出现在主角当前场景中，或世界事件直接涉及该 NPC 时激活。不活跃的 NPC 处于休眠状态，不消耗上下文。",
+      "dormancy_rule": "连续 10 轮未出现在主角场景中的 NPC 自动进入休眠。主角重新进入该 NPC 所在地区时自动激活。",
+      "context_budget": {
+        "max_tokens_input": 4000,
+        "included_context": [
+          "该 NPC 的完整角色卡",
+          "最近 3 次与主角互动的记忆",
+          "当前场景描述"
+        ]
+      },
+      "output_schema": {
+        "action": "NPC 本轮的行动描述",
+        "dialogue": "NPC 说的话（如有）",
+        "decision": "NPC 做出的决定",
+        "relationship_changes": "与该轮中其他角色的关系变化",
+        "reasoning": "为什么这个 NPC 会做出这样的行为——必须与其角色设定一致"
+      },
+      "prohibited": [
+        "不可知晓主角未告知 NPC 的信息",
+        "不可违背角色设定中定义的性格和欲望",
+        "不可替其他 NPC 做决定",
+        "不可拥有超出角色卡中 abilities 范围的能力"
+      ]
+    },
+
+    "chronicler": {
+      "role": "记录员——将每轮的智能体输出整理成可读的叙事正文。不编造，只记录。",
+      "read_permissions": [
+        "本轮所有智能体的输出",
+        "memory/index.json",
+        "memory/recent/",
+        "chronicle/（当前卷）",
+        "state/world.json（当前环境描述）"
+      ],
+      "write_permissions": [
+        "chronicle/",
+        "memory/"
+      ],
+      "call_frequency": "每轮最后执行，在所有其他智能体完成输出之后",
+      "context_budget": {
+        "max_tokens_input": 12000,
+        "included_context": [
+          "本轮所有智能体的完整输出",
+          "上一章末尾 500 字（衔接用）",
+          "相关里程碑记忆",
+          "当前世界时间"
+        ]
+      },
+      "output_schema": {
+        "narrative_passage": "叙事正文（追加到 chronicle 当前卷）",
+        "memory_entries": "生成的新记忆条目列表（含重要性评分）",
+        "timeline_update": "时间线更新条目",
+        "chapter_boundary": "是否需要分章/分卷（当前章节超过 5000 字时建议分章）"
+      },
+      "narrative_style": {
+        "perspective": "第三人称有限视角，跟随主角",
+        "tone": "东方玄幻小说风格，平实但不乏文学性",
+        "pacing": "行动场景快节奏，对话场景适当留白，内心戏通过系统对话来体现",
+        "rule": "史官写史，不知道的事不写。不对未发生的事做预判。不替角色表达内心活动（除非通过行动和对话体现）。"
+      },
+      "prohibited": [
+        "不可编造智能体输出中没有的事件",
+        "不可替主角写内心独白（除非通过系统对话间接体现）",
+        "不可跳过时间（必须记录每一轮）",
+        "不可修改智能体输出的核心内容"
+      ]
+    }
+  }
+}

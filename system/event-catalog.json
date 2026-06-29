@@ -1,0 +1,92 @@
+{
+  "_description": "世界事件目录。定时触发的压力源事件，推动世界向前发展。系统智能体根据触发的事件生成任务。",
+  "version": "0.1.0",
+  "events": [
+    {
+      "id": "we-001",
+      "name": "边境阴影",
+      "type": "势力冲突",
+      "phase": "pending",
+      "trigger": { "type": "protagonist_realm", "value": "炼气期三层" },
+      "phases": [
+        {
+          "phase": 1,
+          "name": "暗流涌动",
+          "description": "边境传来零星失踪报告。各地守备军接到抽调命令，当前地区的守备力量开始削弱。守备负责人情绪明显变得焦躁。"
+        },
+        {
+          "phase": 2,
+          "name": "兵临城下",
+          "description": "一支不明势力的小股部队出现在当前地区外围，开始试探性攻击。守备军进入战备状态。"
+        },
+        {
+          "phase": 3,
+          "name": "真相浮现",
+          "description": "发现这支不明势力与某个修行组织有关。普通士兵无法对抗修士，当前地区陷入危机。主角成为关键变量。"
+        }
+      ],
+      "related_npcs": ["local-guard-captain", "border-scout"],
+      "related_factions": ["garrison-army"],
+      "importance": "major"
+    },
+    {
+      "id": "we-002",
+      "name": "灵脉异动",
+      "type": "自然现象",
+      "phase": "pending",
+      "trigger": { "type": "time", "value": "故事开始后一个月" },
+      "phases": [
+        {
+          "phase": 1,
+          "name": "气息初现",
+          "description": "远方荒野传来异常的灵气波动。当前地区的修行者察觉到空气中出现一种从未感受过的微弱气息。危险生物活动变得更加频繁。"
+        },
+        {
+          "phase": 2,
+          "name": "遗迹浮现",
+          "description": "西荒中一座上古遗迹因灵气异动而从地下浮现。各方势力收到消息后开始向西荒派遣探险队。"
+        },
+        {
+          "phase": 3,
+          "name": "争夺之始",
+          "description": "多个势力在西荒遗迹外围形成对峙。遗迹内部的宝物和秘密成为争夺的焦点。主角可能在遗迹中发现与自己穿越有关的线索。"
+        }
+      ],
+      "related_npcs": ["local-merchant", "divination-elder"],
+      "related_factions": ["local-merchant-guild", "divination-sect"],
+      "importance": "major"
+    },
+    {
+      "id": "we-003",
+      "name": "隐秘势力的注视",
+      "type": "隐秘事件",
+      "phase": "pending",
+      "trigger": { "type": "protagonist_reputation", "value": "当前地区知名度达到 20" },
+      "phases": [
+        {
+          "phase": 1,
+          "name": "暗中观察",
+          "description": "某个隐秘势力的暗线开始在当前地区关注主角的一举一动。幕后长者在等待确认主角是否就是预言中的'域外来客'。"
+        },
+        {
+          "phase": 2,
+          "name": "首次接触",
+          "description": "隐秘势力派出一名成员以偶然的方式接触主角，试探其实力和来历。表面上是一次普通的偶遇，实则是精心安排的测试。"
+        },
+        {
+          "phase": 3,
+          "name": "命运的抉择",
+          "description": "幕后长者决定对主角进行最后一次推演。这次推演的结果将决定该势力对主角的态度——引导、还是清除。"
+        }
+      ],
+      "related_npcs": ["divination-elder"],
+      "related_factions": ["hidden-faction"],
+      "importance": "major"
+    }
+  ],
+  "event_generation_rules": {
+    "max_active_events": 3,
+    "event_spacing": "同一时间最多有 3 个活跃的世界事件。一个事件完全结束后，新的待触发事件才会自动激活。",
+    "npc_involvement": "每个事件必须关联至少 1 个现有 NPC 和 1 个势力，确保事件根植于已有世界状态。"
+  }
+}

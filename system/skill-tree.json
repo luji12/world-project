@@ -1,0 +1,63 @@
+{
+  "_description": "主角技能树定义。系统智能体在发放技能奖励时参考此文件。技能按修为境界解锁。",
+  "version": "0.1.0",
+  "skill_categories": {
+    "combat": "战斗类——提升攻击、防御、速度等战斗能力",
+    "utility": "辅助类——炼丹、炼器、阵法、医术等实用技能",
+    "perception": "感知类——灵力感知、危险预警、读心（高阶）等",
+    "social": "社交类——说服、威压、领袖气质等",
+    "unique": "特殊类——系统专属技能，无法通过常规方式获得"
+  },
+  "skills": [
+    {
+      "id": "logic-analysis",
+      "name": "逻辑分析",
+      "category": "perception",
+      "level": 3,
+      "max_level": 10,
+      "source": "前世经验",
+      "description": "程序员出身的理性思维，在分析局势和推演战术时有额外加成。随修为提升，可以与灵力感知结合形成更强的预判能力。",
+      "unlock_requirement": "初始拥有"
+    },
+    {
+      "id": "danger-sense",
+      "name": "危险感知",
+      "category": "perception",
+      "level": 0,
+      "max_level": 5,
+      "source": "系统",
+      "description": "系统赋予的基础生存能力。能够察觉到一定范围内的威胁。等级越高，感知范围越大、准确度越高。",
+      "unlock_requirement": "炼气期一层"
+    },
+    {
+      "id": "accelerated-learning",
+      "name": "快速学习",
+      "category": "utility",
+      "level": 0,
+      "max_level": 5,
+      "source": "系统",
+      "description": "系统赋予的学习加速能力。学习任何新技能时获得额外熟练度加成。等级越高，加成越大。",
+      "unlock_requirement": "炼气期三层"
+    },
+    {
+      "id": "system-appraisal",
+      "name": "系统鉴定",
+      "category": "perception",
+      "level": 0,
+      "max_level": 3,
+      "source": "系统",
+      "description": "能够鉴定物品、功法、灵丹的品级和效果。等级越高，鉴定信息越详细。",
+      "unlock_requirement": "炼气期五层"
+    },
+    {
+      "id": "inventory-space",
+      "name": "储物空间",
+      "category": "utility",
+      "level": 0,
+      "max_level": 5,
+      "source": "系统",
+      "description": "开辟一个系统专属的储物空间。等级越高，容量越大。LV1: 1立方米, LV5: 1000立方米。",
+      "unlock_requirement": "筑基期一层"
+    }
+  ]
+}

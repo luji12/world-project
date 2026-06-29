@@ -1,0 +1,71 @@
+{
+  "_description": "任务模板库。系统智能体在生成任务时参考此文件，确保任务类型多样化。",
+  "version": "0.1.0",
+  "template_categories": {
+    "main": "主线任务——推进世界观主线的重大事件",
+    "side": "支线任务——地区性事件或 NPC 个人故事",
+    "daily": "日常任务——修炼、采集、巡逻等重复性小任务",
+    "hidden": "隐藏任务——需要特定条件才能触发的特殊任务",
+    "emergency": "紧急任务——突发危险事件，时间敏感"
+  },
+  "difficulty_tiers": {
+    "F": { "description": "毫无难度", "suitable_realm": "凡人", "base_exp": 50 },
+    "E": { "description": "新手入门", "suitable_realm": "凡人~炼气三层", "base_exp": 100 },
+    "D": { "description": "稍有挑战", "suitable_realm": "炼气三层~炼气六层", "base_exp": 250 },
+    "C": { "description": "需要实力", "suitable_realm": "炼气六层~炼气九层", "base_exp": 500 },
+    "B": { "description": "危险任务", "suitable_realm": "筑基期", "base_exp": 1000 },
+    "A": { "description": "高风险高回报", "suitable_realm": "金丹期", "base_exp": 2500 },
+    "S": { "description": "生死一线", "suitable_realm": "元婴期以上", "base_exp": 5000 }
+  },
+  "reward_pools": {
+    "starter": ["铜钱+50~200", "初级回气丹x1~3", "基础功法残篇"],
+    "low": ["碎银+1~5", "初级回气丹x3~5", "低级法器碎片", "基础武技抄本"],
+    "medium": ["灵石x1~10", "中级丹药x1~3", "完整低级法器", "稀有功法残篇"],
+    "high": ["灵石x10~100", "高级丹药x1~2", "完整中级法器", "稀有完整功法"],
+    "legendary": ["灵石x100+", "天材地宝", "上古法器碎片", "失传功法"]
+  },
+  "templates": [
+    {
+      "type": "exploration",
+      "name": "探索类",
+      "description": "探索指定地区、寻找特定物品或地点",
+      "objectives_format": ["到达目标地点", "调查异常现象", "收集情报"],
+      "reward_pool": "starter ~ medium 根据难度调整"
+    },
+    {
+      "type": "combat",
+      "name": "讨伐类",
+      "description": "击败指定的妖兽或敌对修士",
+      "objectives_format": ["找到目标", "击败目标", "收集战利品"],
+      "reward_pool": "low ~ high 根据难度调整"
+    },
+    {
+      "type": "escort",
+      "name": "护送类",
+      "description": "保护 NPC 安全到达指定地点",
+      "objectives_format": ["找到护送对象", "规划路线", "抵御途中危险", "安全送达"],
+      "reward_pool": "starter ~ medium 根据距离和危险程度调整"
+    },
+    {
+      "type": "gathering",
+      "name": "采集类",
+      "description": "采集指定的药草、矿石或其他材料",
+      "objectives_format": ["找到采集地点", "采集指定数量的材料", "注意采集过程中可能遇到的环境危险"],
+      "reward_pool": "starter ~ low"
+    },
+    {
+      "type": "investigation",
+      "name": "调查类",
+      "description": "调查神秘事件、破解谜题或揭露阴谋",
+      "objectives_format": ["收集线索", "询问证人", "分析信息", "得出结论"],
+      "reward_pool": "low ~ high 根据事件重要性调整"
+    },
+    {
+      "type": "social",
+      "name": "社交类",
+      "description": "与 NPC 建立关系、获取信任或解决冲突",
+      "objectives_format": ["了解目标 NPC", "找到正确的接近方式", "达成社交目标"],
+      "reward_pool": "人际关系提升为主，物质奖励为辅"
+    }
+  ]
+}

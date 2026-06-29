@@ -1,0 +1,33 @@
+# Secrets and local runtime config
+.env
+.env.*
+*.local
+
+# Dependencies and build artifacts
+node_modules/
+dist/
+frontend/dist/
+*.egg-info/
+.venv/
+
+# Python/cache artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# OS/editor artifacts
+.DS_Store
+.idea/
+.vscode/
+
+# Generated world/runtime data
+/worlds/
+/state/
+/memory/
+/chronicle/
+/npc-cards/
+/chroma_db/
+/story-ledger.sqlite3
+*.sqlite3
+/chat_history.json
+/_pending_injections.json
