@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { BookMarked, CheckCircle2, FileText, GitBranch, Loader2, RefreshCcw, RotateCcw, ShieldAlert } from 'lucide-react'
 import { fetchCanonBible, fetchCanonConflicts, fetchCanonSource, fetchCanonStatus, recompileCanon, resetCanonWorld, resolveCanonConflict } from '../api'
 import { Button, EmptyState, cx } from '../components/UI'
 import { KeyValue, SectionTitle, StateTag, Surface, WorkspaceHeader, WorkspacePage } from '../components/Atelier'
+import { useWorld } from '../App'
 
 function safeList(value) {
   return Array.isArray(value) ? value : value ? [value] : []
@@ -16,7 +18,71 @@ function JsonBlock({ value }) {
   )
 }
 
+function canonErrorMessage(cause, fallback) {
+  const message = cause?.message || ''
+  if (cause?.status === 404 && (message === 'not found' || message.includes('not found'))) {
+    return '后端尚未加载 Canon API，请重启后端后再试。'
+  }
+  if (message.includes('请先创建或切换世界')) {
+    return '当前没有选中的世界，请先回到世界书架选择一个世界。'
+  }
+  if (message.includes('未找到可用于 Canon 重开的原始脚本')) {
+    return message
+  }
+  return message || fallback
+}
+
+function OperationNotice({ status, report, error }) {
+  if (status === 'idle' && !report && !error) return null
+  if (error && status !== 'success') {
+    return <Surface className="border-[#ad4b3a]/30 bg-[#f5e8e2] p-4 text-sm text-[#8f382d]">{error}</Surface>
+  }
+  if (status === 'resetting') {
+    return (
+      <Surface className="border-[#ad4b3a]/30 bg-[#f5e8e2] p-4">
+        <div className="flex items-center gap-3 text-sm text-[#8f382d]">
+          <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+          <span className="font-medium">正在备份旧世界并按 Canon 重建运行状态…</span>
+        </div>
+      </Surface>
+    )
+  }
+  if (status === 'reloading') {
+    return (
+      <Surface className="border-[#d6ccba] bg-[#fffdf8] p-4">
+        <div className="flex items-center gap-3 text-sm text-[#625a50]">
+          <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin text-[#a94334]" />
+          <span className="font-medium">重建完成，正在刷新世界圣经面板…</span>
+        </div>
+      </Surface>
+    )
+  }
+  if (status === 'success' && report) {
+    return (
+      <Surface className="border-emerald-300/35 bg-emerald-400/10 p-4">
+        <div className="flex flex-col gap-3 text-sm text-[#2f2b25]">
+          <div className="flex items-center gap-2 font-semibold text-emerald-700">
+            <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+            <span>已按 Canon 重开</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <KeyValue label="备份目录" value={report.backup_path || '—'} />
+            <KeyValue label="重开时间" value={report.reset_at || '—'} />
+            <KeyValue label="已清理项" value={`${Array.isArray(report.cleared) ? report.cleared.length : 0} 项`} />
+          </div>
+        </div>
+      </Surface>
+    )
+  }
+  if (status === 'error' && error) {
+    return <Surface className="border-[#ad4b3a]/30 bg-[#f5e8e2] p-4 text-sm text-[#8f382d]">{error}</Surface>
+  }
+  return null
+}
+
 export default function Canon() {
+  const navigate = useNavigate()
+  const { refresh } = useWorld()
   const [status, setStatus] = useState(null)
   const [source, setSource] = useState('')
   const [bible, setBible] = useState(null)
@@ -24,6 +90,8 @@ export default function Canon() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const [operationStatus, setOperationStatus] = useState('idle')
+  const [lastReport, setLastReport] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -39,12 +107,16 @@ export default function Canon() {
       setSource(nextSource?.source || '')
       setBible(nextBible)
       setConflicts(nextConflicts?.conflicts || [])
+      return true
     } catch (cause) {
-      setError(cause.message || 'Canon 加载失败')
+      const message = canonErrorMessage(cause, 'Canon 加载失败')
+      setError(message)
+      if (message.includes('当前没有选中的世界')) navigate('/worlds', { replace: true })
+      return false
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [navigate])
 
   useEffect(() => { load() }, [load])
 
@@ -55,11 +127,13 @@ export default function Canon() {
   async function recompile() {
     setBusy('recompile')
     setError('')
+    setOperationStatus('idle')
     try {
       await recompileCanon()
       await load()
     } catch (cause) {
-      setError(cause.message || '重新编译失败')
+      setError(canonErrorMessage(cause, '重新编译失败'))
+      setOperationStatus('error')
     } finally {
       setBusy('')
     }
@@ -68,11 +142,27 @@ export default function Canon() {
   async function resetWorld() {
     setBusy('reset')
     setError('')
+    setLastReport(null)
+    setOperationStatus('resetting')
     try {
-      await resetCanonWorld()
-      await load()
+      const result = await resetCanonWorld()
+      const report = result?.report || null
+      setLastReport(report)
+      setOperationStatus('reloading')
+      const [loaded] = await Promise.all([
+        load(),
+        Promise.resolve(refresh?.()).catch(() => {}),
+      ])
+      if (!loaded) {
+        setOperationStatus('error')
+        return
+      }
+      setOperationStatus('success')
     } catch (cause) {
-      setError(cause.message || '按 Canon 重开失败')
+      const message = canonErrorMessage(cause, '按 Canon 重开失败')
+      setError(message)
+      setOperationStatus('error')
+      if (message.includes('当前没有选中的世界')) navigate('/worlds', { replace: true })
     } finally {
       setBusy('')
     }
@@ -80,11 +170,13 @@ export default function Canon() {
 
   async function resolve(id) {
     setBusy(id)
+    setError('')
     try {
       await resolveCanonConflict(id, 'resolved')
       await load()
     } catch (cause) {
-      setError(cause.message || '冲突标记失败')
+      setError(canonErrorMessage(cause, '冲突标记失败'))
+      setOperationStatus('error')
     } finally {
       setBusy('')
     }
@@ -99,12 +191,12 @@ export default function Canon() {
         actions={(
           <>
             <Button tone="secondary" icon={busy === 'recompile' ? Loader2 : RefreshCcw} className={busy === 'recompile' ? '[&>svg]:animate-spin' : ''} disabled={Boolean(busy)} onClick={recompile}>重新编译</Button>
-            <Button tone="primary" icon={busy === 'reset' ? Loader2 : RotateCcw} className={busy === 'reset' ? '[&>svg]:animate-spin' : ''} disabled={Boolean(busy)} onClick={resetWorld}>按 Canon 重开</Button>
+            <Button tone="primary" icon={busy === 'reset' ? Loader2 : RotateCcw} className={busy === 'reset' ? '[&>svg]:animate-spin' : ''} disabled={Boolean(busy)} onClick={resetWorld}>{busy === 'reset' ? '正在重开…' : '按 Canon 重开'}</Button>
           </>
         )}
       />
 
-      {error && <Surface className="border-[#ad4b3a]/30 bg-[#f5e8e2] p-4 text-sm text-[#8f382d]">{error}</Surface>}
+      <OperationNotice status={operationStatus} report={lastReport || status?.last_migration_report} error={error} />
       {loading ? (
         <Surface><EmptyState icon={Loader2} title="正在读取世界圣经" description="Canon 正在从当前世界目录加载。" /></Surface>
       ) : !status?.exists ? (
@@ -113,7 +205,7 @@ export default function Canon() {
             icon={ShieldAlert}
             title="这个世界还没有 Canon"
             description="可以点击“按 Canon 重开”，系统会先备份旧世界，再从现有框架重建可约束的运行状态。"
-            action={<Button tone="primary" icon={RotateCcw} disabled={Boolean(busy)} onClick={resetWorld}>备份并重开</Button>}
+            action={<Button tone="primary" icon={busy === 'reset' ? Loader2 : RotateCcw} className={busy === 'reset' ? '[&>svg]:animate-spin' : ''} disabled={Boolean(busy)} onClick={resetWorld}>{busy === 'reset' ? '正在备份并重开…' : '备份并重开'}</Button>}
           />
         </Surface>
       ) : (

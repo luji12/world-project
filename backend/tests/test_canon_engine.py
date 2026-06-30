@@ -80,9 +80,16 @@ class CanonEngineTests(unittest.TestCase):
         (self.world_path / "chat_history.json").write_text('{"events":[{"type":"narration"}]}', encoding="utf-8")
         report = reset_world_from_canon(self.world, source_text="开局地点：青石镇。主线第一阶段：青石镇入世。", source_name="test")
         self.assertTrue(Path(report["backup_path"]).exists())
+        self.assertTrue((self.world_path / "canon" / "migration_report.json").exists())
         self.assertFalse((self.world_path / "chat_history.json").exists())
         world = load_canon(str(self.world_path))
         self.assertIn("青石镇", world["source_text"])
+
+    def test_reset_world_without_source_fails_before_backup(self):
+        with self.assertRaises(ValueError):
+            reset_world_from_canon(self.world)
+        archives = Path(config.WORLDS_DIR) / "_archives"
+        self.assertFalse(archives.exists())
 
     def test_story_context_prioritizes_canon_packet(self):
         source = "开局地点：青石镇。主线第一阶段：青石镇入世。"

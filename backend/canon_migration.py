@@ -37,8 +37,18 @@ def backup_world(world_name: str) -> str:
     os.makedirs(archives, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     dst = os.path.join(archives, f"{safe}-pre-canon-{stamp}")
+    if os.path.exists(dst):
+        dst = os.path.join(archives, f"{safe}-pre-canon-{stamp}-{int(time.time() * 1000) % 1000:03d}")
     shutil.copytree(src, dst)
     return dst
+
+
+def _is_usable_source(text: str) -> bool:
+    clean = (text or "").strip()
+    if len(clean) < 20:
+        return False
+    placeholder_hints = ["（待补充）", "(待补充)", "自动初始化的世界", "旧世界未找到原始脚本"]
+    return not any(hint in clean and len(clean) < 120 for hint in placeholder_hints)
 
 
 def find_source_for_world(world_name: str) -> tuple[str, str]:
@@ -52,9 +62,9 @@ def find_source_for_world(world_name: str) -> tuple[str, str]:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as handle:
                 text = handle.read()
-            if text.strip():
+            if _is_usable_source(text):
                 return text, label
-    return f"# {world_name}\n\n（旧世界未找到原始脚本，Canon Engine 只能从世界名生成最小框架。）\n", "fallback"
+    return "", ""
 
 
 def _minimal_package_from_source(world_name: str, source_text: str) -> dict[str, Any]:
@@ -99,9 +109,11 @@ def reset_world_from_canon(
     if not os.path.isdir(world_path):
         raise FileNotFoundError(f"世界不存在：{world_name}")
 
-    backup_path = backup_world(safe)
     if source_text is None:
         source_text, source_name = find_source_for_world(safe)
+    if not _is_usable_source(source_text):
+        raise ValueError("未找到可用于 Canon 重开的原始脚本或世界框架。请先上传设定文档，或在世界框架中保存完整设定。")
+    backup_path = backup_world(safe)
     world_package = world_package or _minimal_package_from_source(safe, source_text)
     compiled = compile_canon_from_world_package(world_package, source_text, source_name)
     package = canonicalize_world_package(world_package, compiled)

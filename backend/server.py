@@ -1696,10 +1696,19 @@ class AppHandler(BaseHTTPRequestHandler):
         world_name, world_path = self._require_current_world_path()
         if not world_path:
             return
+        migration_report = {}
+        migration_report_path = os.path.join(world_path, "canon", "migration_report.json")
+        if os.path.exists(migration_report_path):
+            try:
+                with open(migration_report_path, "r", encoding="utf-8") as handle:
+                    migration_report = json.load(handle)
+            except Exception:
+                migration_report = {}
         self._send_json({
             "world": world_name,
             **canon_summary(world_path),
             "needs_reset": not canon_exists(world_path),
+            "last_migration_report": migration_report,
         })
 
     def _handle_canon_source(self):
@@ -1779,6 +1788,8 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "ok", "report": report, "canon": canon_summary(config.world_dir())})
         except FileNotFoundError as e:
             self._send_json({"error": str(e)}, 404)
+        except ValueError as e:
+            self._send_json({"error": str(e)}, 400)
         except Exception as e:
             self._send_json({"error": str(e)}, 500)
 

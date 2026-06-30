@@ -39,7 +39,12 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
 
 export async function apiJson(path, options = {}, fallback = '请求失败') {
   const res = await fetchWithTimeout(`${BASE}${path}`, options)
-  if (!res.ok) throw new Error(await parseError(res, fallback))
+  if (!res.ok) {
+    const error = new Error(await parseError(res, fallback))
+    error.status = res.status
+    error.path = path
+    throw error
+  }
   return res.json()
 }
 
