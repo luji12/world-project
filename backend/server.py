@@ -24,6 +24,7 @@ from canon_engine import (
     write_canon_files,
 )
 from canon_migration import reset_world_from_canon
+from outline_engine import load_beat_ledger, load_story_outline
 import config
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
@@ -37,7 +38,7 @@ PORT = 3101
 _CHAT_EVENT_TYPES = {
     "system-message", "narration", "npc-message", "player-action-recorded",
     "agent-output", "agent-error", "story-end", "auto-stop", "turn-start",
-    "canon-violation", "canon-conflict",
+    "canon-violation", "canon-conflict", "outline-contract", "outline-progress",
 }
 
 
@@ -474,6 +475,12 @@ class AppHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/canon/bible":
             self._handle_canon_bible()
+
+        elif path == "/api/canon/outline":
+            self._handle_canon_outline()
+
+        elif path == "/api/canon/beat-ledger":
+            self._handle_canon_beat_ledger()
 
         elif path == "/api/canon/conflicts":
             self._handle_canon_conflicts()
@@ -1727,9 +1734,27 @@ class AppHandler(BaseHTTPRequestHandler):
             "world": world_name,
             "world_bible": canon.get("world_bible", {}),
             "story_arcs": canon.get("story_arcs", {}),
+            "story_outline": canon.get("story_outline", {}),
+            "beat_ledger": canon.get("beat_ledger", {}),
             "constraints": canon.get("constraints", {}),
             "summary": canon_summary(world_path),
         })
+
+    def _handle_canon_outline(self):
+        world_name, world_path = self._require_current_world_path()
+        if not world_path:
+            return
+        outline = load_story_outline(world_path)
+        ledger = load_beat_ledger(world_path, outline)
+        self._send_json({"world": world_name, "outline": outline, "ledger": ledger})
+
+    def _handle_canon_beat_ledger(self):
+        world_name, world_path = self._require_current_world_path()
+        if not world_path:
+            return
+        outline = load_story_outline(world_path)
+        ledger = load_beat_ledger(world_path, outline)
+        self._send_json({"world": world_name, "ledger": ledger})
 
     def _handle_canon_conflicts(self):
         world_name, world_path = self._require_current_world_path()

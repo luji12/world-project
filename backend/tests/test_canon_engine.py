@@ -9,6 +9,7 @@ from canon_context import build_canon_packet
 from canon_engine import canonicalize_world_package, canon_exists, compile_canon_from_world_package, load_canon, write_canon_files
 from canon_migration import reset_world_from_canon
 from canon_validator import validate_agent_output, validate_player_action
+from outline_engine import advance_beat_if_satisfied, build_round_contract, load_beat_ledger, load_story_outline
 from state import write_json
 from story_context import build_agent_context
 
@@ -103,7 +104,63 @@ class CanonEngineTests(unittest.TestCase):
         write_json(str(self.world_path / "memory"), "index.json", {})
         ctx = build_agent_context("world-engine")
         self.assertEqual(ctx["priority_order"][0], "canon_packet.hard_facts")
+        self.assertIn("canon_packet.round_contract", ctx["priority_order"])
         self.assertTrue(ctx["canon_packet"]["exists"])
+
+    def test_detailed_outline_compiles_to_executable_beats_not_power_rows(self):
+        source = """
+世界名称：苍玄界
+主角出生地：青石镇
+
+| 境界 | 描述 |
+| --- | --- |
+| 第一境·启明 | 只是能力等级，不是剧情阶段 |
+| 第二境·观微 | 仍然不是剧情阶段 |
+
+| 阶段 | 对应剧情 |
+| --- | --- |
+| 第一阶段 | 青石镇商业起家，先解决凡人世界的现实问题 |
+| 第二阶段 | 京城见国师，获得灵石线索 |
+| 第三阶段 | 进入天剑宗，正式接触修仙世界 |
+"""
+        compiled = compile_canon_from_world_package(self._package(), source, "outline.md")
+        write_canon_files(str(self.world_path), compiled)
+        outline = load_story_outline(str(self.world_path))
+        titles = [beat["title"] for beat in outline["beats"]]
+        self.assertEqual(outline["world_name"], "苍玄界")
+        self.assertIn("青石镇", outline["start_location"])
+        self.assertTrue(any("青石镇" in title or "青石镇" in beat["summary"] for title, beat in zip(titles, outline["beats"])))
+        self.assertFalse(any("启明" in title or "观微" in title for title in titles))
+        contract = build_round_contract(str(self.world_path))
+        self.assertTrue(contract["exists"])
+        self.assertIn("青石镇", contract["active_beat"].get("summary", "") + contract["active_beat"].get("location", ""))
+
+    def test_round_contract_blocks_locked_future_terms(self):
+        source = "世界名称：苍玄界\n主角出生地：青石镇\n第一阶段：青石镇商业起家。\n第二阶段：进入天剑宗修仙。"
+        write_canon_files(str(self.world_path), compile_canon_from_world_package(self._package(), source, "source.md"))
+        packet = build_canon_packet("test")
+        result = validate_player_action("我立刻去天剑宗拜入仙门", packet)
+        self.assertFalse(result["allowed"])
+        self.assertIn("当前大纲节点", result["reason"])
+
+    def test_agent_output_future_leak_is_blocked_by_contract(self):
+        source = "世界名称：苍玄界\n主角出生地：青石镇\n第一阶段：青石镇商业起家。\n第二阶段：进入天剑宗修仙。"
+        write_canon_files(str(self.world_path), compile_canon_from_world_package(self._package(), source, "source.md"))
+        packet = build_canon_packet("world-engine")
+        output = {"scene_description": "叶然忽然来到天剑宗，拜入仙门。"}
+        repaired, report = validate_agent_output("world-engine", output, packet, world_path=str(self.world_path))
+        self.assertTrue(report["blocked"])
+        self.assertTrue(report["conflicts"])
+        self.assertIn("青石镇", repaired["scene_description"])
+
+    def test_beat_ledger_advances_after_satisfying_current_beat(self):
+        source = "世界名称：苍玄界\n主角出生地：青石镇\n第一阶段：青石镇商业起家。\n第二阶段：京城见国师，获得灵石线索。"
+        write_canon_files(str(self.world_path), compile_canon_from_world_package(self._package(), source, "source.md"))
+        before = load_beat_ledger(str(self.world_path), load_story_outline(str(self.world_path)))
+        report = advance_beat_if_satisfied(str(self.world_path), "叶然在青石镇完成商业起家，解决了凡人世界的现实问题。", 1)
+        after = load_beat_ledger(str(self.world_path), load_story_outline(str(self.world_path)))
+        self.assertNotEqual(before["active_beat_id"], after["active_beat_id"])
+        self.assertTrue(report["advanced"])
 
 
 if __name__ == "__main__":

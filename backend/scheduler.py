@@ -15,6 +15,7 @@ from agent_templates import get_agent_config
 from story_ledger import StoryLedger
 from canon_context import build_canon_packet
 from canon_validator import validate_agent_output, validate_npc_lifecycle_plan, validate_player_action
+from outline_engine import advance_beat_if_satisfied, build_round_contract
 
 
 def _get_npc_director_prompt():
@@ -63,6 +64,37 @@ def _emit_canon_report(emit_fn, agent_name, report, current_round):
         })
 
 
+def _canon_fallback_output(agent_name, output, report, canon_packet):
+    """Return a safe no-drift output when an agent tries to jump the outline."""
+    if not isinstance(report, dict) or not report.get("blocked"):
+        return output
+    contract = canon_packet.get("round_contract", {}) if isinstance(canon_packet, dict) and isinstance(canon_packet.get("round_contract"), dict) else {}
+    beat = contract.get("active_beat", {}) if isinstance(contract.get("active_beat"), dict) else {}
+    title = beat.get("title") or "当前剧情节点"
+    goal = contract.get("required_outcome") or beat.get("summary") or "围绕当前地点和人物推进"
+    message = f"Canon Director 已拦截一次越轨输出。本轮继续停留在「{title}」：{goal}"
+    if agent_name == "world-engine":
+        safe = dict(output or {})
+        safe["scene_description"] = message
+        safe["reasoning"] = message
+        safe["triggered_events"] = []
+        safe["state_changes"] = []
+        return safe
+    if agent_name == "system-agent":
+        safe = dict(output or {})
+        safe["system_dialogue"] = f"当前因果尚未抵达后续节点。{goal}"
+        safe["quest_updates"] = []
+        safe["rewards"] = []
+        return safe
+    if agent_name == "chronicler":
+        return {
+            "narrative_passage": f"因果在「{title}」处收束，所有越过大纲门槛的可能都暂时化作遥远的影子。眼下真正重要的，仍是{goal}",
+            "summary": message,
+            "suggested_actions": ["继续处理当前地点的现实问题", "与当前可见人物交谈", "调查当前节点留下的线索"],
+        }
+    return output if isinstance(output, dict) else {}
+
+
 class RoundEvent:
     def __init__(self, event_type: str, data: dict):
         self.event = event_type
@@ -95,8 +127,18 @@ def run_round(api_key, base_url, model, event_callback=None, pause_check=None, p
     world = read_json(config.STATE_DIR, "world.json")
     current_round = world["meta"]["current_round"] + 1
     canon_packet = build_canon_packet("scheduler")
+    try:
+        canon_packet["round_contract"] = build_round_contract(config.world_dir())
+    except Exception:
+        pass
 
     emit("round-start", {"round": current_round})
+    if canon_packet.get("round_contract", {}).get("exists"):
+        emit("outline-contract", {
+            "round": current_round,
+            "active_beat": canon_packet["round_contract"].get("active_beat", {}),
+            "required_outcome": canon_packet["round_contract"].get("required_outcome", ""),
+        })
 
     while pause_check and pause_check():
         time.sleep(0.3)
@@ -113,6 +155,7 @@ def run_round(api_key, base_url, model, event_callback=None, pause_check=None, p
                 world_output = normalize_agent_output(data, fallback_key="reasoning")
                 world_output, canon_report = validate_agent_output("world-engine", world_output, canon_packet)
                 _emit_canon_report(emit, "world-engine", canon_report, current_round)
+                world_output = _canon_fallback_output("world-engine", world_output, canon_report, canon_packet)
                 world_state = apply_world_output(world_output)
                 
                 # Emit narration for group chat
@@ -147,6 +190,7 @@ def run_round(api_key, base_url, model, event_callback=None, pause_check=None, p
                     system_output = normalize_agent_output(data, fallback_key="system_dialogue")
                     system_output, canon_report = validate_agent_output("system-agent", system_output, canon_packet)
                     _emit_canon_report(emit, "system-agent", canon_report, current_round)
+                    system_output = _canon_fallback_output("system-agent", system_output, canon_report, canon_packet)
                     apply_system_output(system_output)
                     
                     if system_output.get("system_dialogue"):
@@ -360,7 +404,14 @@ def run_round(api_key, base_url, model, event_callback=None, pause_check=None, p
                 chronicle_output = normalize_agent_output(data, fallback_key="narrative_passage")
                 chronicle_output, canon_report = validate_agent_output("chronicler", chronicle_output, canon_packet)
                 _emit_canon_report(emit, "chronicler", canon_report, current_round)
+                chronicle_output = _canon_fallback_output("chronicler", chronicle_output, canon_report, canon_packet)
                 applied = apply_chronicle_output(chronicle_output)
+                try:
+                    beat_report = advance_beat_if_satisfied(config.world_dir(), chronicle_output.get("narrative_passage", ""), current_round)
+                    if beat_report.get("advanced") or beat_report.get("completed"):
+                        emit("outline-progress", {"round": current_round, **beat_report})
+                except Exception:
+                    pass
                 emit("agent-output", {
                     "agent": "chronicler",
                     "summary": chronicle_output.get("narrative_passage", ""),
@@ -583,6 +634,10 @@ def _run_round_with_action(action_text, api_key, base_url, model, event_callback
     world = read_json(config.STATE_DIR, "world.json")
     current_round = world["meta"]["current_round"] + 1
     canon_packet = build_canon_packet("scheduler")
+    try:
+        canon_packet["round_contract"] = build_round_contract(config.world_dir(), player_action=action_text)
+    except Exception:
+        pass
 
     gate = validate_player_action(action_text, canon_packet)
     if not gate.get("allowed", True):
@@ -602,6 +657,12 @@ def _run_round_with_action(action_text, api_key, base_url, model, event_callback
         })
         return results
     emit("round-start", {"round": current_round})
+    if canon_packet.get("round_contract", {}).get("exists"):
+        emit("outline-contract", {
+            "round": current_round,
+            "active_beat": canon_packet["round_contract"].get("active_beat", {}),
+            "required_outcome": canon_packet["round_contract"].get("required_outcome", ""),
+        })
 
     emit("agent-start", {"agent": "protagonist", "round": current_round})
     try:
@@ -633,6 +694,7 @@ def _run_round_with_action(action_text, api_key, base_url, model, event_callback
                 wo_output = normalize_agent_output(data, fallback_key="reasoning")
                 wo_output, canon_report = validate_agent_output("world-engine", wo_output, canon_packet)
                 _emit_canon_report(emit, "world-engine", canon_report, current_round)
+                wo_output = _canon_fallback_output("world-engine", wo_output, canon_report, canon_packet)
                 apply_world_output(wo_output)
                 if wo_output.get("scene_description"):
                     pending_narration = {
@@ -659,6 +721,7 @@ def _run_round_with_action(action_text, api_key, base_url, model, event_callback
                     so_output = normalize_agent_output(data, fallback_key="system_dialogue")
                     so_output, canon_report = validate_agent_output("system-agent", so_output, canon_packet)
                     _emit_canon_report(emit, "system-agent", canon_report, current_round)
+                    so_output = _canon_fallback_output("system-agent", so_output, canon_report, canon_packet)
                     apply_system_output(so_output)
                     if so_output.get("system_dialogue"):
                         emit("system-message", {
@@ -796,7 +859,14 @@ def _run_round_with_action(action_text, api_key, base_url, model, event_callback
                 chronicler_output = normalize_agent_output(data, fallback_key="narrative_passage")
                 chronicler_output, canon_report = validate_agent_output("chronicler", chronicler_output, canon_packet)
                 _emit_canon_report(emit, "chronicler", canon_report, current_round)
+                chronicler_output = _canon_fallback_output("chronicler", chronicler_output, canon_report, canon_packet)
                 apply_chronicle_output(chronicler_output)
+                try:
+                    beat_report = advance_beat_if_satisfied(config.world_dir(), chronicler_output.get("narrative_passage", ""), current_round)
+                    if beat_report.get("advanced") or beat_report.get("completed"):
+                        emit("outline-progress", {"round": current_round, **beat_report})
+                except Exception:
+                    pass
                 try:
                     ledger = StoryLedger(config.world_dir())
                     active_chapter = ledger.active_chapter(round_no=current_round)

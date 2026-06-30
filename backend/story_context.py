@@ -54,7 +54,7 @@ def build_agent_context(agent_name: str = "", *, event_limit: int = 16) -> dict[
     """Build a compact, priority-ordered context packet for every story agent.
 
     Priority is intentionally stable:
-    Canon hard constraints -> current main arc -> player recent actions ->
+    Canon hard constraints -> executable outline beat -> current main arc -> player recent actions ->
     world state -> unresolved foreshadows/canon facts -> important memory ->
     chat summary -> recent visible chat events.
     """
@@ -110,6 +110,8 @@ def build_agent_context(agent_name: str = "", *, event_limit: int = 16) -> dict[
         "agent": agent_name,
         "priority_order": [
             "canon_packet.hard_facts",
+            "canon_packet.round_contract",
+            "canon_packet.active_beat",
             "canon_packet.current_arc",
             "canon_packet.active_milestones",
             "canon_packet.stage_gates",

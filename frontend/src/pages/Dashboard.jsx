@@ -147,7 +147,7 @@ export default function Dashboard({ mode, onModeChange, running, onRunningChange
             叙事流
           </SectionTitle>
           <div ref={feedRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[#f7f3eb] px-5 pb-8 pt-5">
-            {entries.map((entry, ei) => <article key={entry.id || `entry-${ei}-${entry.round || 0}-${entry.type || 'evt'}`} className={cx('border-l pl-4', entry.type === 'chronicle' ? 'border-[#d3ad65]/70' : entry.type === 'action' ? 'border-emerald-300/60' : 'border-[#d6ccba]/22')}><div className="flex flex-wrap items-center gap-2"><span className="text-[11px] font-semibold tracking-[.13em] text-[#d3ad65]">{entry.actor || (entry.type === 'chronicle' ? '记录员' : entry.type === 'system' ? '命运系统' : '世界')}</span>{entry.round && <span className="text-[11px] text-[#756e60]">第 {entry.round} 轮</span>}</div><p className={cx('mt-2 whitespace-pre-wrap text-sm leading-7', entry.type === 'chronicle' ? 'font-serif text-[#e5dccd]' : 'text-[#bdb3a1]')}>{entry.text}</p></article>)}
+            {entries.map((entry, ei) => <article key={entry.id || `entry-${ei}-${entry.round || 0}-${entry.type || 'evt'}`} className={cx('border-l pl-4', entry.type === 'chronicle' ? 'border-[#d3ad65]/70' : entry.type === 'action' ? 'border-emerald-300/60' : entry.type === 'system' ? 'border-[#ad4b3a]/45' : 'border-[#d6ccba]/80')}><div className="flex flex-wrap items-center gap-2"><span className={cx('text-[11px] font-semibold tracking-[.13em]', entry.type === 'system' ? 'text-[#a94334]' : 'text-[#a1783f]')}>{entry.actor || (entry.type === 'chronicle' ? '记录员' : entry.type === 'system' ? '命运系统' : '世界')}</span>{entry.round && <span className="text-[11px] text-[#756e60]">第 {entry.round} 轮</span>}</div><p className={cx('mt-2 whitespace-pre-wrap text-sm leading-7', entry.type === 'chronicle' ? 'font-serif text-[#3d3831]' : 'text-[#625a50]')}>{entry.text}</p></article>)}
             {!entries.length && <EmptyState icon={Sparkles} title="世界等待第一束因果" description="启动自动推演，或切换到玩家介入模式，从你的行动开始故事。" />}
             {running && <InlineLoader>世界正在推演下一段变化…</InlineLoader>}
           </div>
@@ -158,7 +158,8 @@ export default function Dashboard({ mode, onModeChange, running, onRunningChange
           <Surface className="p-5">
             <div className="flex items-center gap-2 text-[#d3ad65]"><CircleGauge aria-hidden="true" className="h-4 w-4" /><span className="text-xs font-semibold tracking-[.14em]">Canon 轨道</span></div>
             <div className="mt-5 space-y-5">
-              <KeyValue label="当前阶段" value={canon?.current_arc?.name || (canon?.exists ? '开篇阶段' : '未编译')} />
+              <KeyValue label="当前阶段" value={canon?.active_beat?.title || canon?.current_arc?.name || (canon?.exists ? '开篇阶段' : '未编译')} />
+              <KeyValue label="节点目标" value={canon?.active_beat?.required_outcome || canon?.active_beat?.summary || '—'} />
               <KeyValue label="起始地区" value={canon?.starting_region || '—'} />
               <KeyValue label="开放冲突" value={`${canon?.conflicts_count || 0} 条`} />
             </div>

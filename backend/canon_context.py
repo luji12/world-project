@@ -6,6 +6,7 @@ from typing import Any
 
 import config
 from canon_engine import canon_exists, load_canon
+from outline_engine import build_round_contract, current_beat, load_beat_ledger
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -37,6 +38,9 @@ def build_canon_packet(agent_name: str = "", *, source_excerpt_limit: int = 1200
             "agent": agent_name,
             "hard_facts": [],
             "current_arc": {},
+            "story_outline": {},
+            "active_beat": {},
+            "round_contract": {"exists": False},
             "active_milestones": [],
             "stage_gates": [],
             "forbidden_events": [],
@@ -49,8 +53,20 @@ def build_canon_packet(agent_name: str = "", *, source_excerpt_limit: int = 1200
     canon = load_canon(world_path)
     bible = canon.get("world_bible", {}) if isinstance(canon.get("world_bible"), dict) else {}
     arcs = canon.get("story_arcs", {}) if isinstance(canon.get("story_arcs"), dict) else {}
+    outline = canon.get("story_outline", {}) if isinstance(canon.get("story_outline"), dict) else {}
+    ledger = canon.get("beat_ledger", {}) if isinstance(canon.get("beat_ledger"), dict) else {}
+    if outline and not ledger:
+        try:
+            ledger = load_beat_ledger(world_path, outline)
+        except Exception:
+            ledger = {}
     constraints = canon.get("constraints", {}) if isinstance(canon.get("constraints"), dict) else {}
     arc = _current_arc(arcs)
+    beat = current_beat(outline, ledger) if outline else {}
+    try:
+        round_contract = build_round_contract(world_path)
+    except Exception:
+        round_contract = {"exists": False}
     milestones = []
     for item in _as_list(arc.get("required_milestones")) + _as_list(arc.get("optional_milestones")):
         if isinstance(item, dict):
@@ -71,6 +87,13 @@ def build_canon_packet(agent_name: str = "", *, source_excerpt_limit: int = 1200
         "agent": agent_name,
         "hard_facts": _as_list(constraints.get("hard_facts"))[:60],
         "current_arc": arc,
+        "story_outline": {
+            "version": outline.get("version", 0),
+            "current_beat_id": ledger.get("active_beat_id") or outline.get("current_beat_id", ""),
+            "beat_count": len(_as_list(outline.get("beats"))),
+        },
+        "active_beat": beat,
+        "round_contract": round_contract,
         "active_milestones": milestones[:20],
         "stage_gates": _as_list(constraints.get("stage_gates"))[:30],
         "forbidden_events": _as_list(constraints.get("forbidden_events"))[:30],
@@ -81,5 +104,5 @@ def build_canon_packet(agent_name: str = "", *, source_excerpt_limit: int = 1200
         },
         "power_system_rules": bible.get("power_system") or {},
         "world_laws": _as_list(bible.get("world_laws"))[:30],
-        "source_excerpt": (canon.get("source_text") or "")[:source_excerpt_limit],
+        "source_excerpt": (round_contract.get("source_excerpt") or canon.get("source_text") or "")[:source_excerpt_limit],
     }

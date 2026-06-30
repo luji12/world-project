@@ -209,6 +209,14 @@ export function fetchCanonBible() {
   return apiJson('/api/canon/bible', {}, '获取世界圣经失败')
 }
 
+export function fetchCanonOutline() {
+  return apiJson('/api/canon/outline', {}, '获取大纲轨道失败')
+}
+
+export function fetchCanonBeatLedger() {
+  return apiJson('/api/canon/beat-ledger', {}, '获取剧情节点账本失败')
+}
+
 export function fetchCanonConflicts() {
   return apiJson('/api/canon/conflicts', {}, '获取 Canon 冲突失败')
 }

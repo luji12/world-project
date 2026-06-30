@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BookMarked, CheckCircle2, FileText, GitBranch, Loader2, RefreshCcw, RotateCcw, ShieldAlert } from 'lucide-react'
-import { fetchCanonBible, fetchCanonConflicts, fetchCanonSource, fetchCanonStatus, recompileCanon, resetCanonWorld, resolveCanonConflict } from '../api'
+import { fetchCanonBible, fetchCanonConflicts, fetchCanonOutline, fetchCanonSource, fetchCanonStatus, recompileCanon, resetCanonWorld, resolveCanonConflict } from '../api'
 import { Button, EmptyState, cx } from '../components/UI'
 import { KeyValue, SectionTitle, StateTag, Surface, WorkspaceHeader, WorkspacePage } from '../components/Atelier'
 import { useWorld } from '../App'
@@ -87,6 +87,8 @@ export default function Canon() {
   const [status, setStatus] = useState(null)
   const [source, setSource] = useState('')
   const [bible, setBible] = useState(null)
+  const [outline, setOutline] = useState(null)
+  const [ledger, setLedger] = useState(null)
   const [conflicts, setConflicts] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
@@ -98,15 +100,18 @@ export default function Canon() {
     setLoading(true)
     setError('')
     try {
-      const [nextStatus, nextSource, nextBible, nextConflicts] = await Promise.all([
+      const [nextStatus, nextSource, nextBible, nextOutline, nextConflicts] = await Promise.all([
         fetchCanonStatus(),
         fetchCanonSource().catch(() => ({ source: '' })),
         fetchCanonBible().catch(() => null),
+        fetchCanonOutline().catch(() => null),
         fetchCanonConflicts().catch(() => ({ conflicts: [] })),
       ])
       setStatus(nextStatus)
       setSource(nextSource?.source || '')
       setBible(nextBible)
+      setOutline(nextOutline?.outline || nextBible?.story_outline || null)
+      setLedger(nextOutline?.ledger || nextBible?.beat_ledger || null)
       setConflicts(nextConflicts?.conflicts || [])
       return true
     } catch (cause) {
@@ -122,8 +127,10 @@ export default function Canon() {
   useEffect(() => { load() }, [load])
 
   const arcs = useMemo(() => safeList(bible?.story_arcs?.arcs), [bible])
+  const beats = useMemo(() => safeList(outline?.beats), [outline])
   const hardFacts = useMemo(() => safeList(bible?.constraints?.hard_facts), [bible])
   const openConflicts = conflicts.filter(item => item?.status !== 'resolved' && item?.status !== 'ignored')
+  const activeBeatId = ledger?.active_beat_id || outline?.current_beat_id || status?.active_beat?.id
 
   async function recompile() {
     setBusy('recompile')
@@ -217,26 +224,30 @@ export default function Canon() {
               <SectionTitle icon={GitBranch} action={<StateTag tone="brass">{status.current_arc?.name || '当前阶段'}</StateTag>}>主线轨道</SectionTitle>
               <div className="grid gap-4 p-5 md:grid-cols-3">
                 <KeyValue label="起始地区" value={status.starting_region} />
-                <KeyValue label="阶段数量" value={`${status.arc_count || 0} 个`} />
+                <KeyValue label="剧情节点" value={`${status.beat_count || beats.length || status.arc_count || 0} 个`} />
                 <KeyValue label="硬约束" value={`${status.hard_constraints || 0} 条`} />
               </div>
               <ol className="divide-y divide-[#d6ccba]/70 border-t border-[#d6ccba]/70">
-                {arcs.map((arc, index) => (
-                  <li key={arc.id || arc.name || index} className={cx('p-5', arc.id === status.current_arc?.id && 'bg-[#f5e8e2]/65')}>
+                {(beats.length ? beats : arcs).map((arc, index) => {
+                  const beatState = ledger?.beats?.[arc.id] || {}
+                  const isActive = arc.id === activeBeatId || arc.id === status.current_arc?.id
+                  return (
+                  <li key={arc.id || arc.name || arc.title || index} className={cx('p-5', isActive && 'bg-[#f5e8e2]/65')}>
                     <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-[11px] tracking-[.16em] text-[#a94334]">阶段 {arc.order || index + 1}</span>
-                      <h3 className="atelier-heading text-lg font-semibold text-[#2f2b25]">{arc.name}</h3>
-                      <StateTag tone={arc.status === 'active' ? 'brass' : 'quiet'}>{arc.status || 'locked'}</StateTag>
+                      <span className="text-[11px] tracking-[.16em] text-[#a94334]">节点 {arc.order || index + 1}</span>
+                      <h3 className="atelier-heading text-lg font-semibold text-[#2f2b25]">{arc.title || arc.name}</h3>
+                      <StateTag tone={isActive ? 'brass' : beatState.status === 'satisfied' ? 'success' : 'quiet'}>{isActive ? 'active' : beatState.status || arc.status || 'locked'}</StateTag>
                     </div>
                     <div className="mt-3 grid gap-3 text-sm leading-6 text-[#625a50] md:grid-cols-2">
                       <p>进入条件：{safeList(arc.entry_conditions).join('；') || '—'}</p>
-                      <p>退出条件：{safeList(arc.exit_conditions).join('；') || '—'}</p>
+                      <p>节点目标：{arc.required_outcome || safeList(arc.exit_conditions).join('；') || arc.summary || '—'}</p>
                     </div>
+                    {arc.source_excerpt && <p className="mt-3 border-l border-[#ad4b3a]/35 pl-3 text-sm leading-6 text-[#766e64]">{arc.source_excerpt}</p>}
                     <ul className="mt-3 space-y-1 text-sm text-[#766e64]">
-                      {safeList(arc.required_milestones).map((item, mi) => <li key={mi}>· {item.name || String(item)}</li>)}
+                      {(safeList(arc.completion_signals).length ? safeList(arc.completion_signals) : safeList(arc.required_milestones)).slice(0, 8).map((item, mi) => <li key={mi}>· {item.name || String(item)}</li>)}
                     </ul>
                   </li>
-                ))}
+                )})}
               </ol>
             </Surface>
 

@@ -17,13 +17,24 @@ import time
 from typing import Any
 
 import config
+from outline_engine import (
+    LEDGER_FILE,
+    OUTLINE_FILE,
+    compile_story_outline,
+    detect_start_location,
+    extract_location_names,
+    extract_world_name,
+    initial_beat_ledger,
+)
 
 
-CANON_VERSION = 1
+CANON_VERSION = 2
 CANON_FILES = {
     "source": "source.md",
     "bible": "world_bible.json",
     "arcs": "story_arcs.json",
+    "outline": OUTLINE_FILE,
+    "beat_ledger": LEDGER_FILE,
     "constraints": "constraints.json",
     "source_map": "source_map.json",
     "conflicts": "conflicts.json",
@@ -127,6 +138,20 @@ def _derive_locations(world_package: dict[str, Any], source_text: str) -> tuple[
             locations[rid] = {"id": rid, "name": str(value or rid), "description": "", "rules": []}
 
     start = geography.get("current_region") or ""
+    script_locations = extract_location_names(source_text, world_package)
+    for candidate in script_locations:
+        if not candidate:
+            continue
+        if any(loc.get("name") == candidate for loc in locations.values()):
+            continue
+        rid = _slug(candidate, "region")
+        locations[rid] = {
+            "id": rid,
+            "name": candidate,
+            "description": "由 Canon Engine 从脚本提取的地点。",
+            "rules": [],
+        }
+
     if not locations:
         candidate = ""
         for line in _extract_lines(source_text, ["起始", "开局", "出生", "当前舞台", "第一幕", "地点", "区域"], 8):
@@ -144,6 +169,12 @@ def _derive_locations(world_package: dict[str, Any], source_text: str) -> tuple[
         # current_region may be a display name instead of id.
         matched = next((rid for rid, loc in locations.items() if loc.get("name") == start), "")
         start = matched or first_key
+
+    if script_locations:
+        start_name = detect_start_location(source_text, [loc.get("name", "") for loc in locations.values() if isinstance(loc, dict)], "")
+        matched = next((rid for rid, loc in locations.items() if loc.get("name") == start_name), "")
+        if matched:
+            start = matched
 
     return locations, start
 
@@ -172,6 +203,8 @@ def _derive_arcs(world_package: dict[str, Any], source_text: str, start_region: 
     if not arcs:
         lines = _extract_lines(source_text, ["主线", "阶段", "剧情", "故事线", "第一", "第二", "第三"], 18)
         for idx, line in enumerate(lines[:6]):
+            if "|" in line or re.search(rf"第[一二三四五六七八九十百千万0-9]+境", line):
+                continue
             arcs.append({
                 "id": f"arc-{idx + 1:02d}",
                 "name": line[:32],
@@ -213,10 +246,38 @@ def compile_canon_from_world_package(
     source_text = source_text or package.get("world_summary") or ""
     ws = _as_dict(package.get("world_state"))
     locations, start_region = _derive_locations(package, source_text)
-    world_name = ws.get("world_name") or package.get("name") or "未命名世界"
+    world_name = extract_world_name(source_text, ws.get("world_name") or package.get("name") or "未命名世界")
     factions = _as_list(ws.get("factions") or package.get("factions"))
     characters = _as_list(package.get("playable_characters")) + _as_list(package.get("npcs"))
-    arcs = _derive_arcs(package, source_text, start_region)
+    start_location_name = locations.get(start_region, {}).get("name", start_region)
+    story_outline = compile_story_outline(
+        source_text,
+        package,
+        world_name=world_name,
+        start_location=start_location_name,
+        locations=[loc.get("name", "") for loc in locations.values() if isinstance(loc, dict)],
+    )
+    outline_beats = [beat for beat in story_outline.get("beats", []) if isinstance(beat, dict)]
+    if outline_beats:
+        arcs = {
+            "version": CANON_VERSION,
+            "current_arc_id": outline_beats[0].get("id", "beat-001"),
+            "arcs": [
+                {
+                    "id": beat.get("id"),
+                    "name": beat.get("title"),
+                    "order": beat.get("order", idx + 1),
+                    "status": "active" if idx == 0 else "locked",
+                    "entry_conditions": beat.get("entry_conditions", []),
+                    "exit_conditions": [beat.get("required_outcome", "")],
+                    "required_milestones": [{"name": beat.get("required_outcome") or beat.get("summary"), "status": "open"}],
+                    "optional_milestones": [],
+                }
+                for idx, beat in enumerate(outline_beats)
+            ],
+        }
+    else:
+        arcs = _derive_arcs(package, source_text, start_region)
 
     hard_facts = [
         {"key": "world_name", "value": world_name, "source": "world_package"},
@@ -257,7 +318,13 @@ def compile_canon_from_world_package(
             "未满足阶段门槛时不得跳到后期主线",
             "不得替换或遗忘 Canon 起始地区、核心势力、力量体系",
             "不得让角色知道 Canon 标注为秘密且未被玩家发现的信息",
+            "不得提前完成 beat_ledger 中 locked 的未来剧情节点",
         ],
+        "outline_director": {
+            "active_beat_id": story_outline.get("current_beat_id", ""),
+            "start_location": story_outline.get("start_location", ""),
+            "beat_count": len(outline_beats),
+        },
         "free_zones": ["玩家解决问题的具体路径", "支线遭遇", "非关键 NPC 的日常行动"],
     }
     source_hash = hashlib.sha256((source_text or json.dumps(package, ensure_ascii=False)).encode("utf-8")).hexdigest()
@@ -265,6 +332,8 @@ def compile_canon_from_world_package(
         "source_text": source_text,
         "world_bible": bible,
         "story_arcs": arcs,
+        "story_outline": story_outline,
+        "beat_ledger": initial_beat_ledger(story_outline),
         "constraints": constraints,
         "source_map": {
             "source_name": source_name,
@@ -287,8 +356,14 @@ def write_canon_files(world_path: str, compiled: dict[str, Any]) -> dict[str, st
     source_text = compiled.get("source_text", "")
     if source_text:
         save_source(world_path, source_text, compiled.get("source_map", {}).get("source_name", ""))
-    for key in ["bible", "arcs", "constraints", "source_map", "conflicts", "version"]:
-        data_key = "world_bible" if key == "bible" else "story_arcs" if key == "arcs" else "canon_version" if key == "version" else key
+    for key in ["bible", "arcs", "outline", "beat_ledger", "constraints", "source_map", "conflicts", "version"]:
+        data_key = (
+            "world_bible" if key == "bible"
+            else "story_arcs" if key == "arcs"
+            else "story_outline" if key == "outline"
+            else "canon_version" if key == "version"
+            else key
+        )
         _write_json(os.path.join(base, CANON_FILES[key]), compiled.get(data_key, {}))
     return {key: os.path.join(base, filename) for key, filename in CANON_FILES.items()}
 
@@ -305,6 +380,8 @@ def load_canon(world_path: str | None = None) -> dict[str, Any]:
         "source_text": source,
         "world_bible": _read_json(os.path.join(base, CANON_FILES["bible"]), {}),
         "story_arcs": _read_json(os.path.join(base, CANON_FILES["arcs"]), {"arcs": []}),
+        "story_outline": _read_json(os.path.join(base, CANON_FILES["outline"]), {"beats": []}),
+        "beat_ledger": _read_json(os.path.join(base, CANON_FILES["beat_ledger"]), {}),
         "constraints": _read_json(os.path.join(base, CANON_FILES["constraints"]), {}),
         "source_map": _read_json(os.path.join(base, CANON_FILES["source_map"]), {}),
         "conflicts": _read_json(os.path.join(base, CANON_FILES["conflicts"]), {"items": []}),
@@ -326,16 +403,24 @@ def canon_summary(world_path_or_compiled: str | dict[str, Any] | None = None) ->
     arcs = _as_dict(canon.get("story_arcs")).get("arcs", [])
     constraints = _as_dict(canon.get("constraints"))
     conflicts = _as_dict(canon.get("conflicts")).get("items", [])
+    outline = _as_dict(canon.get("story_outline"))
+    ledger = _as_dict(canon.get("beat_ledger"))
     current_id = _as_dict(canon.get("story_arcs")).get("current_arc_id")
     current_arc = next((arc for arc in arcs if isinstance(arc, dict) and arc.get("id") == current_id), None)
     if not current_arc and arcs:
         current_arc = next((arc for arc in arcs if isinstance(arc, dict) and arc.get("status") == "active"), None) or arcs[0]
+    beats = [beat for beat in _as_list(outline.get("beats")) if isinstance(beat, dict)]
+    active_beat_id = ledger.get("active_beat_id") or outline.get("current_beat_id", "")
+    active_beat = next((beat for beat in beats if beat.get("id") == active_beat_id), None) or (beats[0] if beats else {})
     return {
         "exists": bool(bible),
         "version": _as_dict(canon.get("canon_version")).get("version", CANON_VERSION),
         "world_name": bible.get("world_name", ""),
         "starting_region": bible.get("starting_region_name") or bible.get("starting_region", ""),
         "current_arc": current_arc or {},
+        "active_beat": active_beat or {},
+        "beat_count": len(beats),
+        "outline_version": outline.get("version", 0),
         "arc_count": len([arc for arc in arcs if isinstance(arc, dict)]),
         "hard_constraints": len(_as_list(constraints.get("hard_facts"))),
         "conflicts_count": len([item for item in conflicts if isinstance(item, dict) and item.get("status", "open") == "open"]),

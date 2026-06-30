@@ -70,6 +70,14 @@ export function eventToMessage(input, playerName = '你') {
   if (event === 'canon-conflict') {
     return { type: 'system_chat', text: `Canon 已校正：${data.message || text || '发现设定冲突'}`, round, bubble_type: 'system' }
   }
+  if (event === 'outline-contract') {
+    const beat = data.active_beat || {}
+    return { type: 'system_chat', text: `本轮大纲节点：${beat.title || '当前节点'}。目标：${data.required_outcome || beat.summary || '按当前节点推进'}`, round, bubble_type: 'system' }
+  }
+  if (event === 'outline-progress') {
+    const next = data.next || {}
+    return { type: 'system_chat', text: next.title ? `大纲节点已推进：进入「${next.title}」` : '当前大纲节点已完成。', round, bubble_type: 'system' }
+  }
   if (event === 'story-end') {
     return { type: 'system_chat', text: data.message || text || '故事已结束。', bubble_type: 'system' }
   }
@@ -93,5 +101,13 @@ export function eventToDashboardEntry(input) {
   if (event === 'player-action-recorded') return { type: 'action', actor: '你', text: data.action || text, round }
   if (event === 'canon-violation') return { type: 'system', text: data.reason || text || '这个行动被 Canon 阶段门槛拦截。', round }
   if (event === 'canon-conflict') return { type: 'system', text: `Canon 校正：${data.message || text || '发现设定冲突'}`, round }
+  if (event === 'outline-contract') {
+    const beat = data.active_beat || {}
+    return { type: 'system', actor: 'Canon Director', text: `本轮节点：${beat.title || '当前节点'}\n目标：${data.required_outcome || beat.summary || '按当前节点推进'}`, round }
+  }
+  if (event === 'outline-progress') {
+    const next = data.next || {}
+    return { type: 'system', actor: 'Canon Director', text: next.title ? `节点完成，进入：${next.title}` : '当前大纲节点已完成。', round }
+  }
   return null
 }

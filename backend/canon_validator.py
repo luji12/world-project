@@ -8,6 +8,7 @@ from typing import Any
 
 import config
 from canon_engine import record_conflict
+from outline_engine import validate_text_against_contract
 
 
 LATE_STAGE_HINTS = [
@@ -36,6 +37,18 @@ def validate_player_action(action: str, canon_packet: dict[str, Any]) -> dict[st
     """Gate impossible stage jumps without deleting player agency."""
     if not canon_packet.get("exists"):
         return {"allowed": True, "violations": []}
+
+    contract = canon_packet.get("round_contract", {}) if isinstance(canon_packet.get("round_contract"), dict) else {}
+    contract_report = validate_text_against_contract(action, contract)
+    contract_violations = contract_report.get("violations", []) if isinstance(contract_report, dict) else []
+    if contract_violations:
+        beat = contract.get("active_beat", {}) if isinstance(contract.get("active_beat"), dict) else {}
+        return {
+            "allowed": False,
+            "violations": contract_violations,
+            "reason": f"当前大纲节点是「{beat.get('title', '当前节点')}」，这个行动会提前跳到尚未解锁的后续剧情。",
+            "suggested_action": f"先完成当前节点目标：{contract.get('required_outcome') or beat.get('summary') or '围绕当前地点和人物推进'}",
+        }
 
     order = _current_arc_order(canon_packet)
     violations = []
@@ -88,7 +101,10 @@ def _repair_location_drift(text: str, packet: dict[str, Any]) -> tuple[str, list
     # already present in Canon; this keeps side scenes possible once introduced.
     pattern = re.compile(r"([\u4e00-\u9fff]{2,10}(?:村|镇|城|山|宗|门|院|坊|界|域|国|府|县|谷|岛))")
     repaired = text
+    generic = {"当前世界", "根据世界", "凡人世界", "修仙世界", "第一阶段", "第二阶段", "第三阶段"}
     for name in pattern.findall(text):
+        if name in generic:
+            continue
         if name not in allowed and len(name) <= 12:
             repaired = repaired.replace(name, replacement)
             conflicts.append({
@@ -123,6 +139,15 @@ def validate_agent_output(
         "chronicler": ["narrative_passage", "summary"],
         "system-agent": ["system_dialogue", "reasoning"],
     }.get(agent_name, ["reasoning"])
+
+    original_blob = "\n".join(_text(repaired.get(field)) for field in text_fields)
+    contract = canon_packet.get("round_contract", {}) if isinstance(canon_packet.get("round_contract"), dict) else {}
+    contract_report = validate_text_against_contract(original_blob, contract)
+    for violation in contract_report.get("violations", []) if isinstance(contract_report, dict) else []:
+        conflicts.append({
+            **violation,
+            "agent": agent_name,
+        })
 
     for field in text_fields:
         if isinstance(repaired.get(field), str):
