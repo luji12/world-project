@@ -5,6 +5,7 @@ import { fetchCanonBible, fetchCanonConflicts, fetchCanonSource, fetchCanonStatu
 import { Button, EmptyState, cx } from '../components/UI'
 import { KeyValue, SectionTitle, StateTag, Surface, WorkspaceHeader, WorkspacePage } from '../components/Atelier'
 import { useWorld } from '../App'
+import { clearWorldUiCache } from '../worldCache'
 
 function safeList(value) {
   return Array.isArray(value) ? value : value ? [value] : []
@@ -82,7 +83,7 @@ function OperationNotice({ status, report, error }) {
 
 export default function Canon() {
   const navigate = useNavigate()
-  const { refresh } = useWorld()
+  const { currentWorld, refresh } = useWorld()
   const [status, setStatus] = useState(null)
   const [source, setSource] = useState('')
   const [bible, setBible] = useState(null)
@@ -147,6 +148,7 @@ export default function Canon() {
     try {
       const result = await resetCanonWorld()
       const report = result?.report || null
+      clearWorldUiCache(result?.report?.world || currentWorld)
       setLastReport(report)
       setOperationStatus('reloading')
       const [loaded] = await Promise.all([

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, BookOpen, Bot, CircleGauge, Globe2, Landmark, Loader2, Pause, Play, RotateCcw, Send, Settings2, Sparkles } from 'lucide-react'
+import { AlertTriangle, BookOpen, Bot, CircleGauge, Globe2, Landmark, Loader2, Pause, Play, RotateCcw, Send, Settings2, Sparkles, Trash2 } from 'lucide-react'
 import { fetchCanonStatus, fetchCurrentWorld, fetchState, injectWorld, pauseAuto, restartWorld, resumeAuto, startAuto, startInteractive } from '../api'
 import { Button, EmptyState, cx } from '../components/UI'
 import { InlineLoader, KeyValue, OverlayDialog, SectionTitle, Segmented, StateTag, Surface, WorkspaceHeader, WorkspacePage } from '../components/Atelier'
@@ -15,6 +15,9 @@ function restoreDashboardEntries(worldName) {
 }
 function persistDashboardEntries(worldName, entries) {
   try { localStorage.setItem(dashboardCacheKey(worldName), JSON.stringify(entries.slice(-300))) } catch {}
+}
+function clearDashboardEntries(worldName) {
+  try { if (worldName) localStorage.removeItem(dashboardCacheKey(worldName)) } catch {}
 }
 
 function regionName(world) {
@@ -114,6 +117,12 @@ export default function Dashboard({ mode, onModeChange, running, onRunningChange
   }
   async function continueSimulation() { try { await resumeAuto(); onPausedChange(false); onRunningChange(true) } catch (cause) { setError(cause.message || '继续失败') } }
   async function pauseSimulation() { try { await pauseAuto(); onPausedChange(true) } catch (cause) { setError(cause.message || '暂停失败') } }
+  function clearNarrativeFlow() {
+    clearDashboardEntries(worldName || currentWorld)
+    setEntries([])
+    onLogsChange([])
+    setError('')
+  }
 
   const worldFacts = useMemo(() => [
     ['当前轮次', `${currentRound} 轮`], ['世界时间', world?.time ? `${world.time.year || ''}年 ${world.time.month || ''}月` : '—'], ['所在区域', regionName(world)],
@@ -126,7 +135,17 @@ export default function Dashboard({ mode, onModeChange, running, onRunningChange
       {error && <div role="alert" className="rounded-md border border-[#b24c43]/25 bg-[#f5e8e2]/60 px-4 py-3 text-sm text-[#9f3e31]">{error}</div>}
       <div className="grid min-h-0 flex-1 gap-5 overflow-hidden xl:grid-cols-[minmax(0,1fr)_18rem]">
         <Surface className="flex min-h-0 flex-col overflow-hidden">
-          <SectionTitle icon={BookOpen} action={<StateTag tone={running ? 'brass' : paused ? 'quiet' : 'quiet'}>{running ? '推演中' : paused ? '等待决策' : '静候开篇'}</StateTag>}>叙事流</SectionTitle>
+          <SectionTitle
+            icon={BookOpen}
+            action={(
+              <div className="flex items-center gap-2">
+                <StateTag tone={running ? 'brass' : paused ? 'quiet' : 'quiet'}>{running ? '推演中' : paused ? '等待决策' : '静候开篇'}</StateTag>
+                <Button size="sm" tone="ghost" icon={Trash2} disabled={!entries.length && !logs.length} onClick={clearNarrativeFlow}>清除记录</Button>
+              </div>
+            )}
+          >
+            叙事流
+          </SectionTitle>
           <div ref={feedRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[#f7f3eb] px-5 pb-8 pt-5">
             {entries.map((entry, ei) => <article key={entry.id || `entry-${ei}-${entry.round || 0}-${entry.type || 'evt'}`} className={cx('border-l pl-4', entry.type === 'chronicle' ? 'border-[#d3ad65]/70' : entry.type === 'action' ? 'border-emerald-300/60' : 'border-[#d6ccba]/22')}><div className="flex flex-wrap items-center gap-2"><span className="text-[11px] font-semibold tracking-[.13em] text-[#d3ad65]">{entry.actor || (entry.type === 'chronicle' ? '记录员' : entry.type === 'system' ? '命运系统' : '世界')}</span>{entry.round && <span className="text-[11px] text-[#756e60]">第 {entry.round} 轮</span>}</div><p className={cx('mt-2 whitespace-pre-wrap text-sm leading-7', entry.type === 'chronicle' ? 'font-serif text-[#e5dccd]' : 'text-[#bdb3a1]')}>{entry.text}</p></article>)}
             {!entries.length && <EmptyState icon={Sparkles} title="世界等待第一束因果" description="启动自动推演，或切换到玩家介入模式，从你的行动开始故事。" />}
