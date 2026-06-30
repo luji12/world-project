@@ -13,6 +13,7 @@ import AutoConfig from './pages/AutoConfig'
 import Settings from './pages/Settings'
 import WorldPanel from './pages/WorldPanel'
 import Play from './pages/Play'
+import Canon from './pages/Canon'
 import { fetchStatus } from './api'
 
 // ── Global world context ───────────────────────────────────────────
@@ -139,6 +140,7 @@ function AppShell() {
                 <Route path="/play" element={hasCurrentWorld ? <Play key={currentWorld} /> : <Navigate to="/worlds" replace />} />
                 <Route path="/reader/:volume" element={hasCurrentWorld ? <Reader key={currentWorld} /> : <Navigate to="/worlds" replace />} />
                 <Route path="/reader" element={hasCurrentWorld ? <Reader key={currentWorld} /> : <Navigate to="/worlds" replace />} />
+                <Route path="/canon" element={hasCurrentWorld ? <Canon key={currentWorld} /> : <Navigate to="/worlds" replace />} />
                 <Route path="/manager" element={hasCurrentWorld ? <Manager key={currentWorld} /> : <Navigate to="/worlds" replace />} />
                 <Route path="/relations" element={hasCurrentWorld ? <Relations key={currentWorld} /> : <Navigate to="/worlds" replace />} />
                 <Route path="/memory" element={hasCurrentWorld ? <Memory key={currentWorld} /> : <Navigate to="/worlds" replace />} />

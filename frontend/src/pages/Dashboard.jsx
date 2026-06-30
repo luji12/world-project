@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, BookOpen, Bot, CircleGauge, Globe2, Landmark, Loader2, Pause, Play, RotateCcw, Send, Settings2, Sparkles } from 'lucide-react'
-import { fetchCurrentWorld, fetchState, injectWorld, pauseAuto, restartWorld, resumeAuto, startAuto, startInteractive } from '../api'
+import { fetchCanonStatus, fetchCurrentWorld, fetchState, injectWorld, pauseAuto, restartWorld, resumeAuto, startAuto, startInteractive } from '../api'
 import { Button, EmptyState, cx } from '../components/UI'
 import { InlineLoader, KeyValue, OverlayDialog, SectionTitle, Segmented, StateTag, Surface, WorkspaceHeader, WorkspacePage } from '../components/Atelier'
 import { loadAutoConfig } from '../autoConfig'
@@ -33,6 +33,7 @@ export default function Dashboard({ mode, onModeChange, running, onRunningChange
   const { settings } = useSettings()
   const { currentWorld } = useWorld()
   const [world, setWorld] = useState(null)
+  const [canon, setCanon] = useState(null)
   const [worldName, setWorldName] = useState('')
   const [entries, setEntries] = useState([])
   const [actionInput, setActionInput] = useState('')
@@ -51,14 +52,19 @@ export default function Dashboard({ mode, onModeChange, running, onRunningChange
       const current = await fetchCurrentWorld()
       if (!current.name) return navigate('/worlds', { replace: true })
       setWorldName(current.name)
-      const nextWorld = await fetchState('world.json')
+      const [nextWorld, nextCanon] = await Promise.all([
+        fetchState('world.json'),
+        fetchCanonStatus().catch(() => null),
+      ])
       setWorld(nextWorld)
+      setCanon(nextCanon)
     } catch { navigate('/worlds', { replace: true }) }
   }, [navigate])
 
   useEffect(() => {
     if (!currentWorld) {
       setWorld(null)
+      setCanon(null)
       setWorldName('')
       setEntries([])
       setIntervention(null)
@@ -130,6 +136,14 @@ export default function Dashboard({ mode, onModeChange, running, onRunningChange
         </Surface>
         <aside className="min-h-0 space-y-5 overflow-y-auto">
           <Surface className="p-5"><div className="flex items-center gap-2 text-[#d3ad65]"><Landmark aria-hidden="true" className="h-4 w-4" /><span className="text-xs font-semibold tracking-[.14em]">当前页</span></div><div className="mt-5 space-y-5">{worldFacts.map(([label, value]) => <KeyValue key={label} label={label} value={value} />)}</div></Surface>
+          <Surface className="p-5">
+            <div className="flex items-center gap-2 text-[#d3ad65]"><CircleGauge aria-hidden="true" className="h-4 w-4" /><span className="text-xs font-semibold tracking-[.14em]">Canon 轨道</span></div>
+            <div className="mt-5 space-y-5">
+              <KeyValue label="当前阶段" value={canon?.current_arc?.name || (canon?.exists ? '开篇阶段' : '未编译')} />
+              <KeyValue label="起始地区" value={canon?.starting_region || '—'} />
+              <KeyValue label="开放冲突" value={`${canon?.conflicts_count || 0} 条`} />
+            </div>
+          </Surface>
           <Surface className="p-5"><div className="flex items-center gap-2 text-[#d3ad65]"><Bot aria-hidden="true" className="h-4 w-4" /><span className="text-xs font-semibold tracking-[.14em]">协作记录</span></div><p className="mt-4 text-sm leading-6 text-[#a99f8c]">本轮已接收 {logs.length} 条引擎事件。记录员的输出会沉淀到章节与记忆系统。</p></Surface>
         </aside>
       </div>

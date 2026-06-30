@@ -2,6 +2,7 @@ import json
 import os
 from state import read_json, write_json, update_json, get_player_character
 import config
+from canon_context import build_canon_packet
 from agent_templates import get_agent_config
 from agents.base import normalize_agent_output, ensure_list_of_dicts
 from world_shape import current_region_id, current_region_info
@@ -233,9 +234,11 @@ def build_core_prompt(core_npcs: list) -> str:
 
     region_info = current_region_info(world)
     region_name = region_info.get("name", "未知地区")
+    canon_packet = build_canon_packet("npc-agents")
 
     return json.dumps({
         "instruction": f"你是{narrator_role}笔下{we_role}的场景导演。当前世界类型为{wt}。主角{protagonist_name}（{protagonist_realm}）刚{protagonist_last_action or '来到此处'}。以下是场景中最重要的{len(core_npcs)}个角色，请为每人决定本轮行为和对话。只有主角能亲眼看见、亲耳听见、或被NPC直接接触的内容才标记为direct/overheard/public_observed；暗中谋划、内心想法、远处行动、上帝视角信息必须标记为private/secret/internal，不要写成给玩家看的台词。所有术语、行为、对话风格必须符合{wt}世界观。",
+        "canon_packet": canon_packet,
         "scene": {
             "time": world.get("time"),
             "region": region_name,
@@ -275,9 +278,11 @@ def build_scene_batch_prompt(scene_npcs: list) -> str:
 
     region_info = current_region_info(world)
     region_name = region_info.get("name", "未知地区")
+    canon_packet = build_canon_packet("npc-agents")
 
     return json.dumps({
         "instruction": f"你是{narrator_role}笔下{we_role}的群演导演。当前世界类型为{wt}。主角{protagonist_name}在{region_name}，以下是周围的次要角色。为每人简要描述本轮行为，一两句话即可。只有主角能感知的行为才标记direct/overheard/public_observed；远处、背地、心理活动标记private/secret/internal，不要主动暴露给玩家。行为要符合{wt}世界观。",
+        "canon_packet": canon_packet,
         "npcs": npc_descriptions,
         "output_format": {
             "npc_actions": [

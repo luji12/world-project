@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   BookOpen,
+  BookMarked,
   Brain,
   CircleGauge,
   Database,
@@ -19,6 +20,7 @@ const worldLinks = [
   { to: '/play', label: '群聊推演', icon: MessageSquare },
   { to: '/', label: '上帝工作台', icon: LayoutDashboard },
   { to: '/reader', label: '阅读器', icon: BookOpen },
+  { to: '/canon', label: '世界圣经', icon: BookMarked },
   { to: '/manager', label: '管理器', icon: CircleGauge },
   { to: '/relations', label: '关系图谱', icon: GitBranch },
   { to: '/memory', label: '记忆系统', icon: Brain },

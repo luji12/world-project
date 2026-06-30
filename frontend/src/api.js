@@ -192,6 +192,34 @@ export function fetchWorldRealms() {
   return apiJson('/api/world-realms', {}, '获取境界体系失败').catch(() => ({ realms: [], system_name: '' }))
 }
 
+export function fetchCanonStatus() {
+  return apiJson('/api/canon/status', {}, '获取 Canon 状态失败')
+}
+
+export function fetchCanonSource() {
+  return apiJson('/api/canon/source', {}, '获取 Canon 原文失败')
+}
+
+export function fetchCanonBible() {
+  return apiJson('/api/canon/bible', {}, '获取世界圣经失败')
+}
+
+export function fetchCanonConflicts() {
+  return apiJson('/api/canon/conflicts', {}, '获取 Canon 冲突失败')
+}
+
+export function recompileCanon(source = '') {
+  return postJson('/api/canon/recompile', source ? { source } : {}, {}, '重新编译 Canon 失败')
+}
+
+export function resetCanonWorld(source = '') {
+  return postJson('/api/canon/reset-world', source ? { source } : {}, {}, '按 Canon 重开世界失败')
+}
+
+export function resolveCanonConflict(id, status = 'resolved', note = '') {
+  return postJson('/api/canon/conflicts/resolve', { id, status, note }, {}, '标记冲突失败')
+}
+
 export function switchWorld(name) {
   return postJson('/api/worlds/switch', { name }, {}, '切换世界失败')
 }

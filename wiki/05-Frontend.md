@@ -27,6 +27,7 @@ frontend/
 │   │   └── UI.jsx          # 通用 UI 组件 (Button, Input, Card 等)
 │   └── pages/
 │       ├── Dashboard.jsx   # 工作台首页
+│       ├── Canon.jsx       # 世界圣经 / 原始脚本 / 约束冲突
 │       ├── Play.jsx        # 交互式游玩
 │       ├── Reader.jsx      # 叙事阅读器
 │       ├── Manager.jsx     # 世界管理器
@@ -46,6 +47,7 @@ frontend/
 |------|----------|------|
 | `/` | `Dashboard` | 工作台 + 自动推演控制 + 最近叙事 |
 | `/play` | `Play` | 交互式游玩 (输入行动 → 观看推演) |
+| `/canon` | `Canon` | 世界圣经、主线轨道、约束冲突、重编译/重开 |
 | `/reader/:volume` | `Reader` | Markdown 叙事阅读 |
 | `/reader` | `Reader` | 默认阅读器 (重定向到最新卷) |
 | `/manager` | `Manager` | 世界状态、NPC、任务、手动推演 SSE |
@@ -120,6 +122,10 @@ async function streamSSE(res, onEvent) {
 | `createWorldV2(name, worldPackage, selectedCharacter)` | `POST /api/worlds/create-v2` |
 | `chatWorld(messages)` | `POST /api/worlds/chat` |
 | `uploadDocument(file)` | `POST /api/worlds/upload-doc` (multipart) |
+| `fetchCanonStatus()` | `GET /api/canon/status` |
+| `fetchCanonBible()` | `GET /api/canon/bible` |
+| `recompileCanon()` | `POST /api/canon/recompile` |
+| `resetCanonWorld()` | `POST /api/canon/reset-world` |
 | `polishAction(text, context)` | `POST /api/polish` |
 | `fetchState(filename)` | `GET /api/state/{file}` |
 | `fetchChronicle(volume)` | `GET /api/chronicle/{volume}` |
@@ -143,10 +149,13 @@ async function streamSSE(res, onEvent) {
 ### 页面组件概要
 
 #### Dashboard.jsx
-自动推演核心控制界面。顶部控制栏：[暂停] [继续] + 进度条 + 当前轮次/时间/修为 + 最近事件流。
+自动推演核心控制界面。顶部控制栏：[暂停] [继续] + 进度条 + 当前轮次/时间/修为 + 最近事件流。右侧展示当前 Canon 阶段、起始地区和开放冲突数。
+
+#### Canon.jsx
+世界圣经面板。展示 `source.md`、结构化世界圣经、当前主线阶段、必达里程碑、硬约束和冲突列表，并提供重新编译与按 Canon 备份重开的操作。
 
 #### Play.jsx
-交互式游玩入口。输入主角行动 → AI 润色 (`polishAction`) → 提交推演 (`startInteractive`) → SSE 流式展示推演过程。
+交互式游玩入口。输入主角行动 → 提交推演 (`startInteractive`) → SSE 流式展示推演过程。顶部显示当前 Canon 主线阶段；若行动越过阶段门槛，会显示 Canon gate 的原因。
 
 #### Reader.jsx
 Markdown 叙事阅读器。支持分卷切换。加载 `chronicle/volume-XX.md` 渲染。

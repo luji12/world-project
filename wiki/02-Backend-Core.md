@@ -30,6 +30,10 @@
 |------|------|----------|------|
 | `GET` | `/api/health` | - | 健康检查 |
 | `GET` | `/api/status` | - | 获取世界状态 |
+| `GET` | `/api/canon/status` | `_handle_canon_status` | Canon 状态与当前主线阶段 |
+| `GET` | `/api/canon/source` | `_handle_canon_source` | 原始脚本文本 |
+| `GET` | `/api/canon/bible` | `_handle_canon_bible` | 世界圣经、主线轨道和约束 |
+| `GET` | `/api/canon/conflicts` | `_handle_canon_conflicts` | Canon 冲突列表 |
 | `GET` | `/api/state/{file}` | - | 读取状态文件 |
 | `GET` | `/api/characters` | - | 获取角色列表 |
 | `GET` | `/api/chronicle/{volume}` | - | 读取叙事卷 |
@@ -56,6 +60,9 @@
 | `POST` | `/api/worlds/framework` | `_handle_framework_update` | 世界框架读写 |
 | `POST` | `/api/worlds/restart` | `_handle_restart_world` | 重启世界 |
 | `POST` | `/api/worlds/delete` | `_handle_delete_world` | 删除世界 |
+| `POST` | `/api/canon/recompile` | `_handle_canon_recompile` | 重新编译 Canon |
+| `POST` | `/api/canon/reset-world` | `_handle_canon_reset_world` | 备份并按 Canon 重开 |
+| `POST` | `/api/canon/conflicts/resolve` | `_handle_canon_conflict_resolve` | 标记冲突状态 |
 | `POST` | `/api/polish` | `_handle_polish` | 润色主角行动 |
 | `POST` | `/api/interact/start` | `_handle_interact_start` | 交互式游玩 |
 | `POST` | `/api/inject` | `_handle_inject` | 注入外部事件 |
@@ -104,11 +111,12 @@ SSE 事件的数据载体。
 #### `run_round(api_key, base_url, model, event_callback, pause_check)` (line 22)
 执行单轮完整推演。流程：
 
-1. **World Engine** (串行) — 流式推进世界状态
-2. **System Agent + Protagonist + NPC Designer + NPC Agents** (并行 `ThreadPoolExecutor(max_workers=4)`)
-3. **Skip Detection** — 如果主角在休息且无活跃事件，跳过 NPC 和 Chronicler
-4. **Chronicler** (串行) — 流式生成叙事文本
-5. 保存 `rounds-log.json` 和 `round-NNNN.json`
+1. **Canon Packet** — 读取世界圣经、当前主线阶段、门槛和禁行事件
+2. **World Engine** (串行) — 流式推进世界状态，并通过 Canon Validator 轻修复
+3. **System Agent + Protagonist + NPC Designer + NPC Agents** (并行 `ThreadPoolExecutor`)
+4. **Skip Detection** — 如果主角在休息且无活跃事件，跳过 NPC 和 Chronicler
+5. **Chronicler** (串行) — 流式生成叙事文本，并再次经过 Canon Validator
+6. 保存 `rounds-log.json` 和 `round-NNNN.json`
 
 #### `run_rounds_auto(stop_conditions, intervention_nodes, ...)` (line 340)
 自动多轮推演循环。支持：
@@ -126,12 +134,12 @@ SSE 事件的数据载体。
 #### `_run_round_with_action(action_text, ...)` (line 444)
 以预定的玩家行动替代主角 Agent 输出，然后执行标准的 World Engine → System Agent → NPC → Chronicler 流程。
 
-#### `_check_and_generate_npcs(api_key, ...)` (line 583)
-惰性 NPC 生成检查：
-- 少于 3 个 NPC → 立即生成
-- 每 8 轮 (少于 10 个 NPC 时)
-- 每 15 轮
-- 主角动作包含"遇到/来到/进入/拜访"等词
+#### Canon 相关模块
+
+- `canon_engine.py`：保存原始脚本，编译 `world_bible/story_arcs/constraints/source_map/conflicts`。
+- `canon_context.py`：为每轮 Agent prompt 构建最高优先级 Canon Packet。
+- `canon_validator.py`：拦截越阶段玩家行动，修复轻微地点漂移，记录冲突。
+- `canon_migration.py`：旧世界先备份到 `worlds/_archives/`，再按 Canon 重开。
 
 #### `_check_story_end(protagonist, event_callback)` (line 655)
 故事结束检测：
@@ -169,7 +177,7 @@ _LAZY_PATHS = {
 
 ### 关键函数
 
-- `current_world_name()` → `str` — 读取 `_current` 文件，自动 fallback 到第一个存在的世界
+- `current_world_name()` → `str` — 读取 `_current` 文件；为空时保持未选择世界，不自动切换
 - `switch_world(name)` — 切换活跃世界
 - `world_dir()` → `str` — 当前世界的根路径
 - `refresh_paths()` — 兼容性空操作 (路径已懒加载)

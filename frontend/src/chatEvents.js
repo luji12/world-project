@@ -64,6 +64,12 @@ export function eventToMessage(input, playerName = '你') {
   if (event === 'agent-error') {
     return { type: 'error_msg', text: `⚠️ ${eventLabel(data.agent)} 出错：${data.error || text || '未知错误'}` }
   }
+  if (event === 'canon-violation') {
+    return { type: 'system_chat', text: data.reason || text || '这个行动被 Canon 阶段门槛拦截。', round, bubble_type: 'system' }
+  }
+  if (event === 'canon-conflict') {
+    return { type: 'system_chat', text: `Canon 已校正：${data.message || text || '发现设定冲突'}`, round, bubble_type: 'system' }
+  }
   if (event === 'story-end') {
     return { type: 'system_chat', text: data.message || text || '故事已结束。', bubble_type: 'system' }
   }
@@ -85,5 +91,7 @@ export function eventToDashboardEntry(input) {
   if (event === 'system-message') return { type: 'system', text: data.dialogue || text, round }
   if (event === 'agent-output' && data.agent === 'chronicler' && (data.summary || text)) return { type: 'chronicle', text: data.summary || text, round }
   if (event === 'player-action-recorded') return { type: 'action', actor: '你', text: data.action || text, round }
+  if (event === 'canon-violation') return { type: 'system', text: data.reason || text || '这个行动被 Canon 阶段门槛拦截。', round }
+  if (event === 'canon-conflict') return { type: 'system', text: `Canon 校正：${data.message || text || '发现设定冲突'}`, round }
   return null
 }

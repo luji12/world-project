@@ -17,6 +17,7 @@
 ## 快速导航
 
 - **推演引擎**：`backend/scheduler.py` → `backend/agents/*` → `backend/story_context.py`
+- **Canon 约束**：`backend/canon_engine.py` → `backend/canon_context.py` → `backend/canon_validator.py` → `frontend/src/pages/Canon.jsx`
 - **玩家介入**：`frontend/src/pages/Play.jsx` → `/api/interact/start` → 统一事件历史
 - **自动推演**：`frontend/src/pages/Dashboard.jsx` → `/api/auto/start`
 - **NPC 生命周期**：`backend/npc_lifecycle.py` → `backend/npc_orchestrator.py`
@@ -29,6 +30,7 @@
 
 ```text
 玩家行动 / 自动推演
+  → Canon Packet / 主线阶段门槛
   → scheduler 规划回合
   → NPC 生命周期生成/激活/退场
   → World/System/Protagonist/NPC/Chronicler 协作

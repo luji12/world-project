@@ -13,6 +13,8 @@ from state import read_json, write_json, update_json, get_player_character
 from risk import get_risk, modify_risk, assess_action_risk, check_death, reset_risk
 from agent_templates import get_agent_config
 from story_ledger import StoryLedger
+from canon_context import build_canon_packet
+from canon_validator import validate_agent_output, validate_npc_lifecycle_plan, validate_player_action
 
 
 def _get_npc_director_prompt():
@@ -47,6 +49,20 @@ def _summarize_npc_visibility(total_active, core_count, scene_count, visible_cou
     return f"推演了{total_active}个活跃角色（核心{core_count}，场景{scene_count}），其中{visible_count}条玩家可见"
 
 
+def _emit_canon_report(emit_fn, agent_name, report, current_round):
+    if not isinstance(report, dict):
+        return
+    for conflict in report.get("conflicts", []) or []:
+        emit_fn("canon-conflict", {
+            "agent": agent_name,
+            "round": current_round,
+            "message": conflict.get("message", "Canon 冲突"),
+            "type": conflict.get("type", "conflict"),
+            "severity": conflict.get("severity", "repair"),
+            "repair": conflict.get("repair", ""),
+        })
+
+
 class RoundEvent:
     def __init__(self, event_type: str, data: dict):
         self.event = event_type
@@ -78,6 +94,7 @@ def run_round(api_key, base_url, model, event_callback=None, pause_check=None, p
 
     world = read_json(config.STATE_DIR, "world.json")
     current_round = world["meta"]["current_round"] + 1
+    canon_packet = build_canon_packet("scheduler")
 
     emit("round-start", {"round": current_round})
 
@@ -94,6 +111,8 @@ def run_round(api_key, base_url, model, event_callback=None, pause_check=None, p
                 emit("agent-stream", {"agent": "world-engine", "delta": data})
             elif output_type == "done":
                 world_output = normalize_agent_output(data, fallback_key="reasoning")
+                world_output, canon_report = validate_agent_output("world-engine", world_output, canon_packet)
+                _emit_canon_report(emit, "world-engine", canon_report, current_round)
                 world_state = apply_world_output(world_output)
                 
                 # Emit narration for group chat
@@ -126,6 +145,8 @@ def run_round(api_key, base_url, model, event_callback=None, pause_check=None, p
                     emit("agent-stream", {"agent": "system-agent", "delta": data})
                 elif output_type == "done":
                     system_output = normalize_agent_output(data, fallback_key="system_dialogue")
+                    system_output, canon_report = validate_agent_output("system-agent", system_output, canon_packet)
+                    _emit_canon_report(emit, "system-agent", canon_report, current_round)
                     apply_system_output(system_output)
                     
                     if system_output.get("system_dialogue"):
@@ -194,6 +215,8 @@ def run_round(api_key, base_url, model, event_callback=None, pause_check=None, p
         try:
             from npc_lifecycle import plan_npc_lifecycle
             npc_plan = plan_npc_lifecycle(api_key, base_url, model)
+            npc_plan, canon_report = validate_npc_lifecycle_plan(npc_plan or {}, canon_packet)
+            _emit_canon_report(emit, "npc-designer", canon_report, current_round)
             if npc_plan:
                 summary = (
                     f"NPC生命周期：新增{len(npc_plan.get('new_characters', []))}，"
@@ -335,6 +358,8 @@ def run_round(api_key, base_url, model, event_callback=None, pause_check=None, p
                     last_sent_len = len(chronicle_text_buffer)
             elif output_type == "done":
                 chronicle_output = normalize_agent_output(data, fallback_key="narrative_passage")
+                chronicle_output, canon_report = validate_agent_output("chronicler", chronicle_output, canon_packet)
+                _emit_canon_report(emit, "chronicler", canon_report, current_round)
                 applied = apply_chronicle_output(chronicle_output)
                 emit("agent-output", {
                     "agent": "chronicler",
@@ -557,6 +582,25 @@ def _run_round_with_action(action_text, api_key, base_url, model, event_callback
 
     world = read_json(config.STATE_DIR, "world.json")
     current_round = world["meta"]["current_round"] + 1
+    canon_packet = build_canon_packet("scheduler")
+
+    gate = validate_player_action(action_text, canon_packet)
+    if not gate.get("allowed", True):
+        payload = {
+            "round": current_round,
+            "action": action_text,
+            "reason": gate.get("reason", "行动违反 Canon 阶段门槛"),
+            "violations": gate.get("violations", []),
+            "suggested_action": gate.get("suggested_action", ""),
+            "bubble_type": "system",
+        }
+        record("canon-violation", payload)
+        emit("system-message", {
+            "dialogue": f"{payload['reason']} {payload.get('suggested_action', '')}".strip(),
+            "round": current_round,
+            "bubble_type": "system",
+        })
+        return results
     emit("round-start", {"round": current_round})
 
     emit("agent-start", {"agent": "protagonist", "round": current_round})
@@ -587,6 +631,8 @@ def _run_round_with_action(action_text, api_key, base_url, model, event_callback
                 emit("agent-stream", {"agent": "world-engine", "delta": data})
             elif output_type == "done":
                 wo_output = normalize_agent_output(data, fallback_key="reasoning")
+                wo_output, canon_report = validate_agent_output("world-engine", wo_output, canon_packet)
+                _emit_canon_report(emit, "world-engine", canon_report, current_round)
                 apply_world_output(wo_output)
                 if wo_output.get("scene_description"):
                     pending_narration = {
@@ -611,6 +657,8 @@ def _run_round_with_action(action_text, api_key, base_url, model, event_callback
                     emit("agent-stream", {"agent": "system-agent", "delta": data})
                 elif output_type == "done":
                     so_output = normalize_agent_output(data, fallback_key="system_dialogue")
+                    so_output, canon_report = validate_agent_output("system-agent", so_output, canon_packet)
+                    _emit_canon_report(emit, "system-agent", canon_report, current_round)
                     apply_system_output(so_output)
                     if so_output.get("system_dialogue"):
                         emit("system-message", {
@@ -629,6 +677,8 @@ def _run_round_with_action(action_text, api_key, base_url, model, event_callback
         try:
             from npc_lifecycle import plan_npc_lifecycle
             npc_plan = plan_npc_lifecycle(api_key, base_url, model)
+            npc_plan, canon_report = validate_npc_lifecycle_plan(npc_plan or {}, canon_packet)
+            _emit_canon_report(emit, "npc-designer", canon_report, current_round)
             if npc_plan:
                 summary = (
                     f"NPC生命周期：新增{len(npc_plan.get('new_characters', []))}，"
@@ -744,6 +794,8 @@ def _run_round_with_action(action_text, api_key, base_url, model, event_callback
                     last_sent_len = len(chronicle_text_buffer)
             elif output_type == "done":
                 chronicler_output = normalize_agent_output(data, fallback_key="narrative_passage")
+                chronicler_output, canon_report = validate_agent_output("chronicler", chronicler_output, canon_packet)
+                _emit_canon_report(emit, "chronicler", canon_report, current_round)
                 apply_chronicle_output(chronicler_output)
                 try:
                     ledger = StoryLedger(config.world_dir())

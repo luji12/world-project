@@ -6,6 +6,7 @@ World Project 的目标是构建一个可长期运行的互动小说世界引擎
 
 - 世界可以自动推演，也可以被玩家随时介入。
 - NPC 不是固定列表，而是随剧情生成、激活、退场和归档。
+- 用户脚本不是一次性摘要，而是永久 Canon：原文、世界圣经、主线轨道、硬约束和冲突记录会持续约束推演。
 - 聊天页遵守玩家视角，不主动暴露背地事件和心理活动。
 - 长篇推演需要记住事实、伏笔、关系和关键选择。
 - 推演结果最终能整理成“去 AI 味”的完整小说阅读体验。
@@ -15,6 +16,7 @@ World Project 的目标是构建一个可长期运行的互动小说世界引擎
 ```text
 React 前端
   ├─ Worlds：世界书架与创建
+  ├─ Canon：世界圣经 / 原始脚本 / 主线轨道 / 冲突
   ├─ Dashboard：上帝工作台 / 自动推演
   ├─ Play：玩家介入群聊
   ├─ Reader：小说阅读器
@@ -28,6 +30,10 @@ Python 后端
   ├─ scheduler.py：回合调度
   ├─ npc_lifecycle.py：NPC Agent 生命周期
   ├─ npc_orchestrator.py：NPC 推演与可见性过滤
+  ├─ canon_engine.py：Canon 文件编译与世界初始化
+  ├─ canon_context.py：Canon Packet 构建
+  ├─ canon_validator.py：玩家行动和 Agent 输出校验
+  ├─ canon_migration.py：旧世界备份与按 Canon 重开
   ├─ agents/：World / System / Protagonist / Chronicler
   ├─ story_context.py：预算化长上下文包
   ├─ story_ledger.py：事实、伏笔、章节、检查点账本
@@ -37,6 +43,7 @@ Python 后端
         ▼
 本地持久化
   ├─ worlds/<name>/state/*.json
+  ├─ worlds/<name>/canon/*.json + source.md
   ├─ worlds/<name>/chat_history.json
   ├─ worlds/<name>/memory/*.json + chroma_db/
   ├─ worlds/<name>/chronicle/*.md
@@ -45,17 +52,31 @@ Python 后端
 
 ## 核心推演流程
 
+所有推演入口都会先构建 Canon Packet。上下文优先级固定为：
+
+```text
+Canon 硬约束
+→ 当前主线阶段
+→ 玩家最近行动
+→ 当前世界状态
+→ 未回收伏笔 / 已确认事实
+→ 角色记忆
+→ 聊天摘要 / 最近消息
+```
+
 ### 自动推演
 
 ```text
 POST /api/auto/start
   → round-start
+  → 构建 Canon Packet
   → NPC Lifecycle 规划生成/激活/退场
   → World Engine 推进世界公开状态
   → System Agent 生成任务/奖励/提示
   → Protagonist Agent 自动行动
   → NPC Agents 推演活跃 NPC
   → 可见性过滤：只把玩家可感知信息发到聊天流
+  → Canon Validator 轻修复或记录冲突
   → Chronicler 生成正文与记忆/伏笔/事实沉淀
   → round-complete
 ```
@@ -64,11 +85,29 @@ POST /api/auto/start
 
 ```text
 POST /api/interact/start { action }
+  → Canon Gate 检查玩家行动是否越过主线阶段门槛
   → 玩家行动写入统一事件历史
   → 当前玩家角色替代 Protagonist Agent
   → 后续世界、系统、NPC、记录员根据玩家行动继续推演
   → Play 页面实时显示玩家可见事件
 ```
+
+## Canon / 世界圣经
+
+每个世界拥有独立 Canon 目录：
+
+```text
+worlds/<name>/canon/
+├── source.md
+├── world_bible.json
+├── story_arcs.json
+├── constraints.json
+├── source_map.json
+├── conflicts.json
+└── canon_version.json
+```
+
+Canon 采用“轨道式自由”：起始地点、核心势力、力量体系、阶段门槛和必达里程碑是硬轨道；玩家的解决方式、支线遭遇、非关键 NPC 日常允许自由变化。旧世界如无 Canon，可在前端“世界圣经”页先备份到 `worlds/_archives/`，再重建 state、记忆、聊天和账本。
 
 ## NPC Agent 生命周期
 
@@ -105,13 +144,14 @@ POST /api/interact/start { action }
 
 每个 Agent 获得的是预算化上下文包，而不是无限拼接历史：
 
-1. 玩家最近行动。
-2. 当前世界状态。
-3. 未回收伏笔。
-4. 已确认事实。
-5. 角色重要记忆。
-6. 聊天滚动摘要。
-7. 最近事件窗口。
+1. Canon 硬约束与当前主线阶段。
+2. 玩家最近行动。
+3. 当前世界状态。
+4. 未回收伏笔。
+5. 已确认事实。
+6. 角色重要记忆。
+7. 聊天滚动摘要。
+8. 最近事件窗口。
 
 Chronicler 必带 Story Ledger 的 facts、open foreshadows 和 recent events，避免正文忘记已确认事实。
 
@@ -136,6 +176,13 @@ Chronicler 必带 Story Ledger 的 facts、open foreshadows 和 recent events，
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/status` | 当前世界、自动推演和模型状态 |
+| GET | `/api/canon/status` | Canon 是否存在、当前阶段和冲突数 |
+| GET | `/api/canon/source` | 当前世界原始脚本 |
+| GET | `/api/canon/bible` | 世界圣经、主线轨道和约束摘要 |
+| POST | `/api/canon/recompile` | 从原文或传入文本重新编译 Canon |
+| POST | `/api/canon/reset-world` | 备份并按 Canon 强制重开当前世界 |
+| GET | `/api/canon/conflicts` | Canon 冲突列表 |
+| POST | `/api/canon/conflicts/resolve` | 标记冲突处理状态 |
 | GET | `/api/worlds` | 世界列表 |
 | POST | `/api/worlds/create-v2` | 创建世界 |
 | POST | `/api/worlds/delete` | 删除世界并清理当前世界指针 |

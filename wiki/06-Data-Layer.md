@@ -10,6 +10,14 @@
 worlds/<world-name>/
 ├── world.json                    # 世界元信息
 ├── world-framework.md            # 世界设定文档
+├── canon/                        # 原始脚本、世界圣经、主线轨道、约束与冲突
+│   ├── source.md
+│   ├── world_bible.json
+│   ├── story_arcs.json
+│   ├── constraints.json
+│   ├── source_map.json
+│   ├── conflicts.json
+│   └── canon_version.json
 ├── chat_history.json             # 统一事件历史
 ├── story-ledger.sqlite3          # 事实/伏笔/章节/检查点账本
 ├── state/
@@ -58,7 +66,24 @@ worlds/<world-name>/
 
 私密事件可以进入 round log、记忆和账本，但不应作为群聊消息渲染。
 
-## 4. `characters.json`
+`canon-violation` 和 `canon-conflict` 事件也会进入历史流，用于向玩家解释阶段门槛拦截或设定轻修复。
+
+## 4. `canon/`
+
+Canon 是所有推演的最高优先级设定来源：
+
+| 文件 | 用途 |
+| --- | --- |
+| `source.md` | 用户导入或对话创建时保留下来的完整原始脚本。 |
+| `world_bible.json` | 世界名、起始地区、地理、势力、角色、力量体系和世界法则。 |
+| `story_arcs.json` | 主线阶段、阶段顺序、进入/退出条件、必达/可选里程碑。 |
+| `constraints.json` | 硬约束、软约束、阶段门槛、禁行事件、可自由推演区。 |
+| `source_map.json` | Canon 设定来源、原文 hash、编译时间。 |
+| `conflicts.json` | 推演输出或玩家行动造成的 Canon 冲突记录。 |
+
+旧世界按 Canon 重开前会先备份到 `worlds/_archives/<world>-pre-canon-<timestamp>/`。
+
+## 5. `characters.json`
 
 角色库保存所有历史角色，不只保存当前活跃角色。
 
@@ -81,7 +106,7 @@ worlds/<world-name>/
 }
 ```
 
-## 5. `npc_agents.json`
+## 6. `npc_agents.json`
 
 活跃 Agent 注册表只保存当前推演窗口，不是角色总表。
 
@@ -100,7 +125,7 @@ worlds/<world-name>/
 }
 ```
 
-## 6. 记忆系统
+## 7. 记忆系统
 
 每个角色都有独立记忆文件：
 
@@ -123,7 +148,7 @@ worlds/<world-name>/
 | compressed | 滚动摘要，降低上下文成本。 |
 | milestones | 长期关键事件、秘密、承诺、伏笔。 |
 
-## 7. Story Ledger
+## 8. Story Ledger
 
 `story-ledger.sqlite3` 是长篇推演的事实来源，主要保存：
 
@@ -135,7 +160,7 @@ worlds/<world-name>/
 
 Chronicler 和上下文构建层都会读取账本，避免长篇剧情忘记旧决定。
 
-## 8. 删除世界
+## 9. 删除世界
 
 删除当前世界时：
 
@@ -147,7 +172,7 @@ Chronicler 和上下文构建层都会读取账本，避免长篇剧情忘记旧
 
 删除非当前世界时，不影响当前世界。
 
-## 9. 公开发布忽略项
+## 10. 公开发布忽略项
 
 必须忽略：
 

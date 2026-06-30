@@ -14,6 +14,16 @@ from state import read_json, read_text
 from doc_parser import extract_text, summarize_long_text
 from story_ledger import StoryLedger
 from prose_quality import review_prose
+from canon_engine import (
+    canonicalize_world_package,
+    canon_exists,
+    canon_summary,
+    compile_canon_from_world_package,
+    load_canon,
+    resolve_conflict,
+    write_canon_files,
+)
+from canon_migration import reset_world_from_canon
 import config
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
@@ -27,6 +37,7 @@ PORT = 3101
 _CHAT_EVENT_TYPES = {
     "system-message", "narration", "npc-message", "player-action-recorded",
     "agent-output", "agent-error", "story-end", "auto-stop", "turn-start",
+    "canon-violation", "canon-conflict",
 }
 
 
@@ -108,6 +119,14 @@ def _event_projection(event_type, data):
         actor = "system"
         source = "turn"
         text = data_dict.get("summary") or data_dict.get("reason", "")
+    elif event_type == "canon-violation":
+        actor = "Canon"
+        source = "canon-validator"
+        text = data_dict.get("reason", "")
+    elif event_type == "canon-conflict":
+        actor = "Canon"
+        source = "canon-validator"
+        text = data_dict.get("message", "")
 
     return {
         "type": event_type,
@@ -442,7 +461,22 @@ class AppHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/status":
             api_key = self.headers.get("X-API-Key", "")
-            self._send_json(_world_status_payload(has_api_key=bool(api_key)))
+            self._send_json(_world_status_payload(
+                has_api_key=bool(api_key),
+                canon=canon_summary(config.world_dir()) if config.current_world_name() and canon_exists(config.world_dir()) else {"exists": False},
+            ))
+
+        elif path == "/api/canon/status":
+            self._handle_canon_status()
+
+        elif path == "/api/canon/source":
+            self._handle_canon_source()
+
+        elif path == "/api/canon/bible":
+            self._handle_canon_bible()
+
+        elif path == "/api/canon/conflicts":
+            self._handle_canon_conflicts()
 
         elif path == "/api/story/context":
             world_name = config.current_world_name()
@@ -559,6 +593,15 @@ class AppHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/worlds/delete":
             self._handle_delete_world(body)
+
+        elif path == "/api/canon/recompile":
+            self._handle_canon_recompile(body)
+
+        elif path == "/api/canon/reset-world":
+            self._handle_canon_reset_world(body)
+
+        elif path == "/api/canon/conflicts/resolve":
+            self._handle_canon_conflict_resolve(body)
 
         elif path == "/api/polish":
             self._handle_polish(body)
@@ -916,8 +959,14 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "世界已存在"}, 409)
             return
 
+        source_text = world_package.get("_source_text") or world_package.get("world_summary", "")
+        source_name = world_package.get("_source_name") or "world-package"
+        compiled_canon = compile_canon_from_world_package(world_package, source_text, source_name)
+        world_package = canonicalize_world_package(world_package, compiled_canon)
+
         for sub in ["state", "chronicle", "npc-cards", "memory", "config", "system"]:
             os.makedirs(os.path.join(world_path, sub), exist_ok=True)
+        write_canon_files(world_path, compiled_canon)
 
         from state import write_json
 
@@ -1182,6 +1231,7 @@ class AppHandler(BaseHTTPRequestHandler):
             "name": name,
             "player_character": player_name,
             "total_characters": len(all_characters),
+            "canon": canon_summary(world_path),
         })
 
     def _handle_world_chat(self, body):
@@ -1422,17 +1472,25 @@ class AppHandler(BaseHTTPRequestHandler):
                 finish_reason = data["choices"][0].get("finish_reason", "")
                 parsed = _try_parse_world_json(content)
                 if parsed and isinstance(parsed, dict) and parsed.get("mode") == "world_package":
+                    package = parsed.get("world_package", {}) or {}
+                    source_text = "\n\n".join(str(m.get("content", "")) for m in messages if isinstance(m, dict))
+                    package["_source_text"] = source_text or package.get("world_summary", "")
+                    package["_source_name"] = "world-chat"
+                    canon_draft = compile_canon_from_world_package(package, package["_source_text"], "world-chat")
+                    package["canon_summary"] = canon_summary(canon_draft)
                     if finish_reason == "length":
                         self._send_json({
                             "mode": "world_package_incomplete",
-                            "world_package": parsed.get("world_package", {}),
+                            "world_package": package,
                             "warning": "世界包生成不完整，部分数据可能缺失，但不影响使用。",
+                            "canon": canon_summary(canon_draft),
                         })
                     else:
                         self._send_json({
                             "mode": "world_package",
-                            "world_package": parsed.get("world_package", {}),
-                            "world_summary": parsed.get("world_package", {}).get("world_summary", ""),
+                            "world_package": package,
+                            "world_summary": package.get("world_summary", ""),
+                            "canon": canon_summary(canon_draft),
                         })
                     return
                 self._send_json({"reply": content})
@@ -1600,6 +1658,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "文件内容过短，无法解析。建议上传至少100字的文档。"}, 400)
             return
 
+        raw_text = text
         if len(text) > 60000:
             text = summarize_long_text(text, api_key, base_url, model)
 
@@ -1609,12 +1668,130 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "文档解析失败，请重试或切换到对话模式手动创建。"}, 500)
             return
 
+        world_package["_source_text"] = raw_text
+        world_package["_source_name"] = filename
+        canon_draft = compile_canon_from_world_package(world_package, raw_text, filename)
+        world_package["canon_summary"] = canon_summary(canon_draft)
+
         self._send_json({
             "mode": "world_package",
             "world_package": world_package,
             "world_summary": world_package.get("world_summary", ""),
             "source_document": filename,
+            "canon": canon_summary(canon_draft),
         })
+
+    def _require_current_world_path(self):
+        world_name = config.current_world_name()
+        if not world_name:
+            self._send_json({"error": "请先创建或切换世界"}, 404)
+            return None, None
+        world_path = config.world_dir()
+        if not os.path.isdir(world_path):
+            self._send_json({"error": "当前世界目录不存在"}, 404)
+            return None, None
+        return world_name, world_path
+
+    def _handle_canon_status(self):
+        world_name, world_path = self._require_current_world_path()
+        if not world_path:
+            return
+        self._send_json({
+            "world": world_name,
+            **canon_summary(world_path),
+            "needs_reset": not canon_exists(world_path),
+        })
+
+    def _handle_canon_source(self):
+        world_name, world_path = self._require_current_world_path()
+        if not world_path:
+            return
+        canon = load_canon(world_path)
+        self._send_json({"world": world_name, "source": canon.get("source_text", ""), "exists": bool(canon.get("source_text"))})
+
+    def _handle_canon_bible(self):
+        world_name, world_path = self._require_current_world_path()
+        if not world_path:
+            return
+        canon = load_canon(world_path)
+        self._send_json({
+            "world": world_name,
+            "world_bible": canon.get("world_bible", {}),
+            "story_arcs": canon.get("story_arcs", {}),
+            "constraints": canon.get("constraints", {}),
+            "summary": canon_summary(world_path),
+        })
+
+    def _handle_canon_conflicts(self):
+        world_name, world_path = self._require_current_world_path()
+        if not world_path:
+            return
+        canon = load_canon(world_path)
+        conflicts = canon.get("conflicts", {}).get("items", []) if isinstance(canon.get("conflicts"), dict) else []
+        self._send_json({"world": world_name, "conflicts": conflicts})
+
+    def _handle_canon_recompile(self, body):
+        world_name, world_path = self._require_current_world_path()
+        if not world_path:
+            return
+        source_text = body.get("source") or load_canon(world_path).get("source_text", "")
+        if not source_text.strip():
+            fw_path = os.path.join(world_path, "world-framework.md")
+            if os.path.exists(fw_path):
+                with open(fw_path, "r", encoding="utf-8") as handle:
+                    source_text = handle.read()
+        if not source_text.strip():
+            self._send_json({"error": "未找到可编译的 Canon 原始脚本"}, 400)
+            return
+        try:
+            world_state = read_json(os.path.join(world_path, "state"), "world.json")
+        except Exception:
+            world_state = {"meta": {"world_name": world_name}, "geography": {"current_region": "", "regions": {}}}
+        package = {
+            "name": world_name,
+            "world_type": world_state.get("meta", {}).get("world_type", "自定义") if isinstance(world_state, dict) else "自定义",
+            "world_summary": source_text[:4000],
+            "world_state": {
+                "world_name": world_state.get("meta", {}).get("world_name", world_name) if isinstance(world_state, dict) else world_name,
+                "time": world_state.get("time", {}) if isinstance(world_state, dict) else {},
+                "geography": world_state.get("geography", {}) if isinstance(world_state, dict) else {},
+                "factions": world_state.get("factions", []) if isinstance(world_state, dict) else [],
+                "global_events": (world_state.get("global_events", {}) or {}).get("pending", []) if isinstance(world_state, dict) else [],
+            },
+        }
+        compiled = compile_canon_from_world_package(package, source_text, body.get("source_name", "manual-recompile"))
+        write_canon_files(world_path, compiled)
+        self._send_json({"status": "ok", "world": world_name, "canon": canon_summary(world_path)})
+
+    def _handle_canon_reset_world(self, body):
+        world_name = (body.get("name") or config.current_world_name()).strip()
+        if not self._validate_world_name(world_name):
+            self._send_json({"error": "世界名称无效"}, 400)
+            return
+        try:
+            report = reset_world_from_canon(
+                world_name,
+                source_text=body.get("source") or None,
+                source_name=body.get("source_name", "api-reset"),
+                world_package=body.get("world_package") if isinstance(body.get("world_package"), dict) else None,
+            )
+            config.switch_world(world_name)
+            self._send_json({"status": "ok", "report": report, "canon": canon_summary(config.world_dir())})
+        except FileNotFoundError as e:
+            self._send_json({"error": str(e)}, 404)
+        except Exception as e:
+            self._send_json({"error": str(e)}, 500)
+
+    def _handle_canon_conflict_resolve(self, body):
+        world_name, world_path = self._require_current_world_path()
+        if not world_path:
+            return
+        conflict_id = body.get("id") or body.get("conflict_id")
+        if not conflict_id:
+            self._send_json({"error": "缺少冲突 id"}, 400)
+            return
+        data = resolve_conflict(world_path, conflict_id, body.get("status", "resolved"), body.get("note", ""))
+        self._send_json({"status": "ok", "world": world_name, "conflicts": data.get("items", [])})
 
     def _handle_framework_update(self, body):
         """Update or get world framework document."""
@@ -1636,6 +1813,14 @@ class AppHandler(BaseHTTPRequestHandler):
         if mode == "save" and content:
             with open(fw_path, "w") as f:
                 f.write(content)
+            if body.get("canon"):
+                package = {
+                    "name": name,
+                    "world_summary": content,
+                    "world_state": {"world_name": name, "geography": {"current_region": "", "regions": {}}},
+                }
+                compiled = compile_canon_from_world_package(package, content, "world-framework.md")
+                write_canon_files(world_path, compiled)
             self._send_json({"status": "ok"})
         else:
             framework = ""

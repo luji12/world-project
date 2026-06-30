@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BookOpen, Bot, ChevronDown, ChevronUp, Fingerprint, Globe, Loader2, MessageCircle, MessageSquare, ScrollText, Send, Settings2, Sparkles, Trash2 } from 'lucide-react'
 import { useWorld } from '../App'
-import { clearChatHistory, fetchChatHistory, fetchState, startInteractive } from '../api'
+import { clearChatHistory, fetchCanonStatus, fetchChatHistory, fetchState, startInteractive } from '../api'
 import { Button, EmptyState, cx } from '../components/UI'
 import { StateTag, Surface, WorkspaceHeader, WorkspacePage } from '../components/Atelier'
 import { useSettings } from '../SettingsContext'
@@ -31,6 +31,7 @@ export default function Play() {
   const [chatSummary, setChatSummary] = useState('')
   const [summaryExpanded, setSummaryExpanded] = useState(false)
   const [currentRound, setCurrentRound] = useState(0)
+  const [canon, setCanon] = useState(null)
   const [confirmingClear, setConfirmingClear] = useState(false)
   const hasRestored = useRef(false)
   const feedRef = useRef(null)
@@ -46,6 +47,7 @@ export default function Play() {
       setTypingAgent('')
       setError('')
       setCurrentRound(0)
+      setCanon(null)
       return undefined
     }
     let active = true
@@ -58,8 +60,10 @@ export default function Play() {
       fetchChatHistory().catch(() => null),
       fetchState('world.json').catch(() => null),
       fetchState('protagonist.json').catch(() => null),
-    ]).then(([hist, world, protagonist]) => {
+      fetchCanonStatus().catch(() => null),
+    ]).then(([hist, world, protagonist, nextCanon]) => {
       if (!active) return
+      setCanon(nextCanon)
       const nextPlayerName = protagonist?.name || protagonist?.meta?.name || '你'
       setPlayerName(nextPlayerName)
       if (world?.meta?.current_round !== undefined) setCurrentRound(world.meta.current_round)
@@ -323,6 +327,7 @@ export default function Play() {
             <span className="text-xs font-semibold tracking-[.14em] text-[#a94334]">操控角色</span>
             <span className="font-serif text-sm font-semibold text-[#2f2b25]">{playerName}</span>
             {currentRound > 0 && <span className="text-[11px] text-[#766e64]">· 第 {currentRound} 轮</span>}
+            {canon?.current_arc?.name && <span className="text-[11px] text-[#766e64]">· {canon.current_arc.name}</span>}
             {messages.length > 0 && <span className="text-[11px] text-[#766e64]">· {messages.length} 条消息</span>}
           </div>
           <div className="flex shrink-0 items-center gap-2">

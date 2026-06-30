@@ -7,6 +7,7 @@ import os
 from typing import Any
 
 import config
+from canon_context import build_canon_packet
 from memory_manager import get_memory_context, sync_all_characters
 from state import get_player_character, get_player_memory_id, read_json
 from story_ledger import StoryLedger
@@ -53,8 +54,9 @@ def build_agent_context(agent_name: str = "", *, event_limit: int = 16) -> dict[
     """Build a compact, priority-ordered context packet for every story agent.
 
     Priority is intentionally stable:
-    player recent actions -> world state -> unresolved foreshadows/canon facts
-    -> important memory -> chat summary -> recent visible chat events.
+    Canon hard constraints -> current main arc -> player recent actions ->
+    world state -> unresolved foreshadows/canon facts -> important memory ->
+    chat summary -> recent visible chat events.
     """
     try:
         world = read_json(config.STATE_DIR, "world.json")
@@ -103,9 +105,14 @@ def build_agent_context(agent_name: str = "", *, event_limit: int = 16) -> dict[
 
     world_time = world.get("time", {}) if isinstance(world, dict) else {}
     geography = world.get("geography", {}) if isinstance(world, dict) else {}
+    canon_packet = build_canon_packet(agent_name)
     return {
         "agent": agent_name,
         "priority_order": [
+            "canon_packet.hard_facts",
+            "canon_packet.current_arc",
+            "canon_packet.active_milestones",
+            "canon_packet.stage_gates",
             "player_recent_actions",
             "current_world_state",
             "open_foreshadows",
@@ -114,6 +121,7 @@ def build_agent_context(agent_name: str = "", *, event_limit: int = 16) -> dict[
             "chat_summary",
             "recent_chat_events",
         ],
+        "canon_packet": canon_packet,
         "player": {
             "id": player.get("id", player_id),
             "name": player.get("name", "主角"),
